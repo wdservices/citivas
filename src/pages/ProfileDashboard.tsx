@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowLeft, Building2, ShoppingBag, Home, Calendar, Megaphone, Users,
+  ArrowLeft, Building2, ShoppingBag, Home, Calendar, Megaphone,
   Plus, LayoutDashboard, MapPin, Trash2, Edit3, Ticket, Store,
   ChevronRight, Loader2, Download, FileText, BarChart2, Info, CalendarClock, Image as ImageIcon, Hotel, UtensilsCrossed, Sparkles
 } from "lucide-react";
@@ -19,7 +19,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useRegion } from "@/contexts/RegionContext";
 import { useToast } from "@/hooks/use-toast";
 import { db } from "@/lib/firebase";
-import { getDoc, doc, addDoc, collection, serverTimestamp, getDocs, orderBy, query, limit } from "firebase/firestore";
+import { getDoc, doc, addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { useMyListings, useBusinessChildren, useCreateDoc, useUpdateDoc, useDeleteDoc, useMyEventOrders, useMyTicketOrders, useMyAttendedEvents, fmt } from "@/lib/useFirestore";
 import ImageUpload from "@/components/ImageUpload";
 import MultiImageUpload from "@/components/MultiImageUpload";
@@ -251,16 +251,6 @@ const ProfileDashboard = () => {
     { name: "Regular", price: "0", quantity: "100" },
   ]);
 
-  // ── Database Explorer (live counts + samples for overview diagnostic card) ──
-  const [dbData, setDbData] = useState<Record<string, any[]>>({
-    users: [], businesses: [], marketplace: [], house_listings: [], events: [],
-  });
-  const [dbCounts, setDbCounts] = useState<Record<string, number>>({
-    users: 0, businesses: 0, marketplace: 0, house_listings: 0, events: 0,
-  });
-  const [dbLoading, setDbLoading] = useState(true);
-  const [dbError, setDbError] = useState<string | null>(null);
-
   // ── User's businesses (for product/property linking) ──
   const { data: listingsData, isLoading: loadingListings } = useMyListings(user?.id || null);
   const myBusinesses = (listingsData?.businesses || []) as ListingItem[];
@@ -416,41 +406,6 @@ const ProfileDashboard = () => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [createOpen, isLocating]);
-
-  // ── Database Explorer: fetch counts + latest 3 docs from 5 core collections ──
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        setDbLoading(true);
-        setDbError(null);
-        const COLLECTIONS = ['users', 'businesses', 'marketplace', 'house_listings', 'events'];
-        const nextData: Record<string, any[]> = {};
-        const nextCounts: Record<string, number> = {};
-        for (const col of COLLECTIONS) {
-          const snap = await getDocs(collection(db, col));
-          nextCounts[col] = snap.size;
-          const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-          all.sort((a: any, b: any) => {
-            const at = a?.createdAt?.toMillis ? a.createdAt.toMillis() : (a.createdAt || 0);
-            const bt = b?.createdAt?.toMillis ? b.createdAt.toMillis() : (b.createdAt || 0);
-            return bt - at;
-          });
-          nextData[col] = all.slice(0, 3);
-        }
-        if (!cancelled) {
-          setDbData(nextData);
-          setDbCounts(nextCounts);
-        }
-      } catch (err: any) {
-        if (!cancelled) setDbError(err?.message || String(err));
-      } finally {
-        if (!cancelled) setDbLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const resetWizard = () => {
     setCreateOpen(false);
@@ -2473,96 +2428,6 @@ const ProfileDashboard = () => {
                 </Card>
               ))}
             </div>
-
-            {/* Database Explorer — live Firestore collection snapshot */}
-            <Card className="border-border/50">
-              <CardContent className="p-5">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <h3 className="font-bold">Database Explorer</h3>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      Live snapshot of top-level Firestore collections (counts + latest 3 docs each)
-                    </p>
-                  </div>
-                  {dbLoading ? (
-                    <Badge variant="secondary" className="text-xs animate-pulse">Fetching…</Badge>
-                  ) : dbError ? (
-                    <Badge variant="destructive" className="text-xs">Firestore Error</Badge>
-                  ) : (
-                    <Badge variant="outline" className="text-xs bg-success/10 text-success border-success/30">
-                      {Object.values(dbCounts).reduce((s: number, n: any) => s + (Number(n) || 0), 0)} docs · Connected
-                    </Badge>
-                  )}
-                </div>
-
-                {dbError && (
-                  <div className="mb-4 p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-xs text-destructive font-mono break-words">
-                    {String(dbError)}
-                  </div>
-                )}
-
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
-                  {[
-                    { key: 'users',        icon: Users,        title: 'Users',           tint: 'primary' },
-                    { key: 'businesses',   icon: Building2,    title: 'Businesses',      tint: 'accent'  },
-                    { key: 'marketplace',  icon: ShoppingBag,  title: 'Marketplace',     tint: 'success' },
-                    { key: 'house_listings', icon: Home,        title: 'House Listings',  tint: 'primary' },
-                    { key: 'events',       icon: Calendar,     title: 'Events',          tint: 'accent'  },
-                  ].map((col) => {
-                    const count = dbCounts[col.key] || 0;
-                    const latest = dbData[col.key] || [];
-                    return (
-                      <div key={col.key} className="rounded-xl border border-border/50 bg-background/50 p-4 flex flex-col gap-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <div className={`w-8 h-8 rounded-lg bg-${col.tint}/10 flex items-center justify-center`}>
-                              <col.icon className={`w-4 h-4 text-${col.tint}`} />
-                            </div>
-                            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{col.title}</span>
-                          </div>
-                          <span className="text-xl font-extrabold">{count}</span>
-                        </div>
-                        <div className="space-y-2">
-                          {dbLoading ? (
-                            <div className="h-3 rounded-full bg-muted animate-pulse" />
-                          ) : latest.length === 0 ? (
-                            <p className="text-[10px] text-muted-foreground italic py-3 text-center">
-                              No documents in <code className="font-mono">{col.key}</code> yet — run <code className="font-mono">node seed.js</code>
-                            </p>
-                          ) : (
-                            latest.map((doc: any, idx: number) => {
-                              const title = doc.title || doc.name || doc.businessName || doc.propertyName || '(untitled)';
-                              const location = [doc.city, doc.state].filter(Boolean).join(', ') || doc.location || '—';
-                              const type = doc.listingType || doc.propertySubType || doc.propertyType || doc.type || doc.productCategory || doc.category || doc.eventType || '—';
-                              const price = (typeof doc.priceLabel === 'string' ? doc.priceLabel : (doc.priceNum || doc.price) ? `₦${Number(doc.priceNum || doc.price).toLocaleString()}` : null);
-                              const seller = doc.sellerType === 'individual' ? 'Individual' : doc.businessId ? 'Business' : (doc.sellerType || '—');
-                              const status = doc.status || (doc.isActive ? 'Active' : '—');
-                              return (
-                                <div key={doc.id || idx} className="rounded-lg border border-border/40 bg-card p-2.5 space-y-1">
-                                  <div className="flex items-start justify-between gap-1">
-                                    <p className="text-[11px] font-bold leading-tight line-clamp-1">{title}</p>
-                                    <Badge variant="outline" className="shrink-0 text-[9px] px-1.5 py-0">{status}</Badge>
-                                  </div>
-                                  <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground line-clamp-1">
-                                    <span className="font-mono bg-muted/60 rounded px-1 py-0.5">{type}</span>
-                                    <span className="truncate">{location}</span>
-                                  </div>
-                                  <div className="flex items-center justify-between text-[10px]">
-                                    <span className="font-bold text-success">{price ?? '—'}</span>
-                                    <span className="text-muted-foreground truncate max-w-[55%] text-right">{seller}</span>
-                                  </div>
-                                  <p className="text-[9px] font-mono text-muted-foreground/70 truncate">id: {doc.id?.slice(0, 12)}…</p>
-                                </div>
-                              );
-                            })
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </CardContent>
-            </Card>
 
             {/* Hospitality Entry Card */}
             {hasMiniSite && (
