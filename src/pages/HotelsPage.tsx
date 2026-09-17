@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { collection, getDocs, query, where } from "firebase/firestore";
+import { collection, getDocs, query, where, collectionGroup } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { normalizeBusinessDoc, normalizeListingDoc } from "@/lib/normalizeBusiness";
 import SearchHeader from "@/components/SearchHeader";
 import ListingCard from "@/components/ListingCard";
 import MiniSiteStrip from "@/components/MiniSiteStrip";
@@ -32,33 +33,49 @@ const HotelsPage = () => {
   useEffect(() => {
     const fetchHotels = async () => {
       try {
-        const [bizSnap, propSnap] = await Promise.all([
+        const [bizSnap, houseSnap, groupSnap] = await Promise.all([
           getDocs(query(collection(db, "businesses"))),
-          getDocs(query(collection(db, "house_listings"), where("miniSiteActive", "==", true))),
+          getDocs(query(collection(db, "house_listings"))),
+          getDocs(collectionGroup(db, "properties")).catch(() => ({ docs: [] }) as any),
         ]);
 
         const bizHotels: Hotel[] = bizSnap.docs
-          .map(doc => ({ id: doc.id, ...doc.data(), _source: "business" as const }))
+          .map(doc => ({ ...normalizeBusinessDoc(doc.id, doc.data()), _source: "business" as const }))
           .filter((doc: any) => doc.category === "Hotel") as Hotel[];
 
-        const propHotels: Hotel[] = propSnap.docs.map(doc => {
-          const data = doc.data() as any;
-          const slug = (data.title || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "");
+        const toHotel = (doc: any): Hotel | null => {
+          const raw = doc.data ? (doc.data() as any) : doc;
+          const n = normalizeListingDoc(doc.id, raw);
+          const haystack = `${raw.type || ""} ${raw.propertySubType || ""} ${raw.propertyType || ""} ${n.category} ${n.title}`.toLowerCase();
+          // Skip non-stay listings (land, commercial, office)
+          if (/\bland\b|\bcommercial\b|\boffice\b/.test(haystack)) return null;
+          const slug = (n.title || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "");
           return {
-            id: doc.id,
-            title: data.title || "",
-            description: data.description || "",
-            image: data.image || (data.images && data.images[0]) || "",
+            id: n.id,
+            title: n.title || "",
+            description: n.description || "",
+            image: n.image || "",
             category: "Shortlet & Hotel",
-            rating: data.rating || 0,
-            price: data.price || "",
-            location: data.location || "",
-            phone: data.phone || "",
+            rating: n.rating || 0,
+            price: typeof n.price === "string" ? n.price : String(n.price || ""),
+            location: n.location || "",
+            phone: n.phone || "",
             isOpen: true,
             _source: "house_listing",
             slug,
-          };
-        });
+          } as Hotel;
+        };
+
+        const seen = new Set(bizHotels.map((h) => h.id));
+        const propHotels: Hotel[] = [];
+        for (const doc of [...houseSnap.docs, ...groupSnap.docs]) {
+          if (seen.has(doc.id)) continue;
+          const h = toHotel(doc);
+          if (h) {
+            seen.add(doc.id);
+            propHotels.push(h);
+          }
+        }
 
         setHotels([...bizHotels, ...propHotels]);
       } catch (err) {

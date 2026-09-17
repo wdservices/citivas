@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { normalizeBusinessDoc, normalizeListingDoc } from "@/lib/normalizeBusiness";
 import SearchHeader from "@/components/SearchHeader";
 import SEO from "@/components/SEO";
 import ListingCard from "@/components/ListingCard";
@@ -50,39 +51,25 @@ const SearchPage = () => {
             console.log("Found Bluewaves match in Firestore:", data);
           }
           return {
-            id: doc.id,
-            ...data,
-            title: data.title || data.businessName || 'Untitled Business',
+            ...normalizeBusinessDoc(doc.id, data),
             type: 'business'
           };
         }) as SearchResultItem[];
 
         const events = eventSnap.docs.map(doc => {
-          const data = doc.data();
+          const n = normalizeListingDoc(doc.id, doc.data());
           return {
-            id: doc.id,
-            title: data.title || 'Untitled Event',
-            description: data.description || '',
-            image: data.imageUrl || '',
-            category: data.category || 'Events',
-            location: data.location || data.venue || '',
+            ...n,
+            category: n.category || 'Events',
             type: 'event',
-            ...data
           };
         }) as SearchResultItem[];
 
         const houses = houseSnap.docs.map(doc => {
-          const data = doc.data();
+          const n = normalizeListingDoc(doc.id, doc.data());
           return {
-            id: doc.id,
-            title: data.title || data.name || 'Untitled Property',
-            description: data.description || '',
-            image: (data.images && data.images[0]) || data.image || '',
-            category: data.propertySubType === 'hotel' ? 'Hotel' : data.propertySubType === 'rent' ? 'For Rent' : data.propertySubType === 'land' ? 'Land' : data.propertySubType === 'commercial' ? 'Commercial' : data.type || 'Property',
-            location: data.address || data.location || '',
-            price: data.price || (data.pricePerNight ? `₦${data.pricePerNight.toLocaleString()}/night` : ''),
+            ...n,
             type: 'house',
-            ...data
           };
         }) as SearchResultItem[];
 

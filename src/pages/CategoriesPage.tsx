@@ -8,6 +8,7 @@ import { getMockImage } from "@/lib/mockImages";
 import { propertySlug } from "@/content/miniSites";
 import { useRegion } from "@/contexts/RegionContext";
 import { useBusinesses, useEvents, useMarketplaceItems, useHouseListings, fmt } from "@/lib/useFirestore";
+import { normalizeBusinessDoc, normalizeListingDoc } from "@/lib/normalizeBusiness";
 
 function isRecentlyListed(createdAt?: any): boolean {
   if (!createdAt) return false;
@@ -48,24 +49,26 @@ const CategoriesPage = () => {
   const { data: bizData, isLoading: bizLoading } = useBusinesses();
   const { data: mktData, isLoading: mktLoading } = useMarketplaceItems();
   const { data: propData, isLoading: propLoading } = useHouseListings();
+  const { data: eventData, isLoading: eventLoading } = useEvents();
 
-  const loading = bizLoading || mktLoading || propLoading;
+  const loading = bizLoading || mktLoading || propLoading || eventLoading;
 
   const businesses = useMemo(() => {
     if (!bizData) return [];
     return bizData
+      .map((b: any) => normalizeBusinessDoc(b.id, b))
       .filter((b: any) => b.category !== "Event" && b.category !== "Events")
       .slice(0, 4)
       .map((b: any) => ({ id: b.id, title: fmt(b.title), description: fmt(b.description), image: b.image || "", category: fmt(b.category), rating: b.rating || 0, location: fmt(b.location), price: fmt(b.price), createdAt: b.createdAt }));
   }, [bizData]);
 
   const events = useMemo(() => {
-    if (!bizData) return [];
-    return bizData
-      .filter((b: any) => b.category === "Event" || b.category === "Events")
+    if (!eventData) return [];
+    return eventData
+      .map((e: any) => normalizeListingDoc(e.id, e))
       .slice(0, 4)
       .map((b: any) => ({ id: b.id, title: fmt(b.title), description: fmt(b.description), image: b.image || "", category: fmt(b.category), rating: b.rating || 0, location: fmt(b.location), price: fmt(b.price), createdAt: b.createdAt }));
-  }, [bizData]);
+  }, [eventData]);
 
   const isProperty = (cat: unknown) =>
     ["property", "properties", "apartment", "shortlet", "house", "real estate", "stays"].includes(
@@ -75,29 +78,34 @@ const CategoriesPage = () => {
   const marketplace = useMemo(() => {
     if (!mktData) return [];
     return mktData
-      .filter((m: any) => !isProperty(m.category))
+      .map((m: any) => normalizeListingDoc(m.id, m))
+      .filter((m: any) => !isProperty(m.category) && !isProperty((m as any).type))
       .slice(0, 4)
       .map((m: any) => ({ id: m.id, title: fmt(m.title), description: fmt(m.description), image: m.image || "", category: fmt(m.category), rating: m.rating || 0, location: fmt(m.location), price: fmt(m.price), createdAt: m.createdAt }));
   }, [mktData]);
 
   const properties = useMemo(() => {
     const propItems = propData
-      ? propData.map((p: any) => ({
-          id: p.id,
-          title: fmt(p.title),
-          description: fmt(p.description),
-          image: p.image || "",
-          category: fmt(p.category),
-          rating: p.rating || 0,
-          location: fmt(p.location),
-          price: fmt(p.price),
-          createdAt: p.createdAt,
-          miniSiteActive: p.miniSiteActive || false,
-          slug: (p.title || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, ""),
-        }))
+      ? propData.map((p: any) => {
+        const n = normalizeListingDoc(p.id, p);
+        return {
+          id: n.id,
+          title: fmt(n.title),
+          description: fmt(n.description),
+          image: n.image || "",
+          category: fmt(n.category),
+          rating: n.rating || 0,
+          location: fmt(n.location),
+          price: fmt(n.price),
+          createdAt: n.createdAt,
+          miniSiteActive: (p as any).miniSiteActive || false,
+          slug: (n.title || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, ""),
+        };
+      })
       : [];
     const mktPropertyItems = mktData
       ? mktData
+          .map((m: any) => normalizeListingDoc(m.id, m))
           .filter((m: any) => isProperty(m.category))
           .map((m: any) => ({
             id: m.id,

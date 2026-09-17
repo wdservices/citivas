@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import SEO from "@/components/SEO";
 import { useMarketplaceItems, fmt } from "@/lib/useFirestore";
+import { normalizeListingDoc } from "@/lib/normalizeBusiness";
 import { getMockImage } from "@/lib/mockImages";
 
 function isRecentlyListed(createdAt?: any): boolean {
@@ -50,17 +51,20 @@ const MarketplacePage = () => {
 
   const marketplaceItems = useMemo(() => {
     if (!rawItems) return [];
-    return rawItems.map((raw: any) => ({
-      id: raw.id,
-      title: String(raw.title || "Untitled"),
-      image: raw.image || getMockImage(raw.category) || PLACEHOLDER_IMG,
-      location: fmt(raw.location),
-      price: fmt(raw.price) || "Price on request",
-      promoPrice: fmt(raw.promoPrice) || "",
-      category: String(raw.category || "Other"),
-      rating: raw.rating || 0,
-      createdAt: raw.createdAt,
-    }));
+    return rawItems.map((raw: any) => {
+      const n = normalizeListingDoc(raw.id, raw);
+      return {
+        id: n.id,
+        title: String(n.title || "Untitled"),
+        image: n.image || getMockImage(n.category) || PLACEHOLDER_IMG,
+        location: fmt(n.location || [raw.city, raw.state].filter(Boolean).join(", ")),
+        price: fmt(n.price) || "Price on request",
+        promoPrice: fmt(raw.promoPrice) || "",
+        category: String(n.category || "Other"),
+        rating: n.rating || 0,
+        createdAt: raw.createdAt,
+      };
+    });
   }, [rawItems]);
 
   const toggleLike = (id: string) => {

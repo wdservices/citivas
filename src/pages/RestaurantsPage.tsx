@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { normalizeBusinessDoc } from "@/lib/normalizeBusiness";
 import SearchHeader from "@/components/SearchHeader";
 import ListingCard from "@/components/ListingCard";
 import MiniSiteStrip from "@/components/MiniSiteStrip";
@@ -33,22 +34,7 @@ const RestaurantsPage = () => {
         const q = query(collection(db, "businesses"));
         const querySnapshot = await getDocs(q);
         const restaurantsData = querySnapshot.docs
-          .map(doc => {
-            const d: any = doc.data();
-            return {
-              id: doc.id,
-              title: d.title || d.businessName || "Untitled",
-              description: d.description || "",
-              image: d.image || d.logoUrl || "",
-              category: d.category,
-              rating: d.rating || 0,
-              price: d.price || "",
-              location: d.location || [d.city, d.state].filter(Boolean).join(", ") || "",
-              phone: d.phone || d.contactPhone || "",
-              website: d.website || "",
-              isOpen: d.isOpen ?? true,
-            };
-          })
+          .map(doc => normalizeBusinessDoc(doc.id, doc.data()))
           .filter((doc: any) => doc.category === "Restaurant") as Restaurant[];
         setRestaurants(restaurantsData);
       } catch (err) {

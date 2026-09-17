@@ -69,11 +69,41 @@ export async function compressImageToDataUrl(file: File, maxWidth = 1280, qualit
 }
 
 /**
+ * fetch with a hard timeout — an unresponsive endpoint (missing backend,
+ * unprovisioned bucket, blocked network) must never hang an upload forever.
+ */
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit = {},
+  ms = 15000,
+): Promise<Response> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    return await fetch(url, { ...init, signal: ctrl.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Reject if the wrapped promise doesn't settle within `ms`. */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms / 1000}s`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+/**
  * Primary image upload function with multi-tier fallback:
  * 1. Cloudinary Unsigned (if client env variables configured)
  * 2. Cloudinary Signed via Server (if server env variables configured)
  * 3. Firebase Storage (if provisioned)
  * 4. Resilient Base64 Data URL (guaranteed success)
+ *
+ * Every network tier has a hard timeout so a missing backend / unprovisioned
+ * bucket can never leave the UI stuck on "Uploading..." forever.
  */
 export async function uploadImageToCloudinary(
   file: File,
@@ -93,7 +123,7 @@ export async function uploadImageToCloudinary(
       if (options.publicId) formData.append('public_id', options.publicId);
 
       const uploadUrl = `https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`;
-      const response = await fetch(uploadUrl, { method: 'POST', body: formData });
+      const response = await fetchWithTimeout(uploadUrl, { method: 'POST', body: formData }, 20000);
 
       if (response.ok) {
         const result = await response.json();
@@ -113,11 +143,15 @@ export async function uploadImageToCloudinary(
 
   // Tier 2: Server-side Signed Cloudinary Upload
   try {
-    const signRes = await fetch('/api/uploads/sign', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ folder: options.folder, public_id: options.publicId }),
-    });
+    const signRes = await fetchWithTimeout(
+      '/api/uploads/sign',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folder: options.folder, public_id: options.publicId }),
+      },
+      10000,
+    );
 
     if (signRes.ok) {
       const signData = await signRes.json();
@@ -130,10 +164,11 @@ export async function uploadImageToCloudinary(
         if (options.folder) formData.append('folder', options.folder);
         if (options.publicId) formData.append('public_id', options.publicId);
 
-        const uploadRes = await fetch(`https://api.cloudinary.com/v1_1/${signData.cloudName}/auto/upload`, {
-          method: 'POST',
-          body: formData,
-        });
+        const uploadRes = await fetchWithTimeout(
+          `https://api.cloudinary.com/v1_1/${signData.cloudName}/auto/upload`,
+          { method: 'POST', body: formData },
+          45000,
+        );
 
         if (uploadRes.ok) {
           const result = await uploadRes.json();
@@ -152,14 +187,14 @@ export async function uploadImageToCloudinary(
     // Continue to next tier
   }
 
-  // Tier 3: Firebase Storage Upload
+  // Tier 3: Firebase Storage Upload (skipped fast if the bucket was never provisioned)
   if (storage) {
     try {
       const cleanFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
       const storagePath = `${folder}/${Date.now()}_${cleanFileName}`;
       const storageRef = ref(storage, storagePath);
-      const snapshot = await uploadBytes(storageRef, file);
-      const downloadUrl = await getDownloadURL(snapshot.ref);
+      const snapshot = await withTimeout(uploadBytes(storageRef, file), 25000, 'Firebase Storage upload');
+      const downloadUrl = await withTimeout(getDownloadURL(snapshot.ref), 15000, 'Firebase Storage URL');
 
       if (downloadUrl) {
         return {
@@ -173,9 +208,19 @@ export async function uploadImageToCloudinary(
     }
   }
 
-  // Tier 4: Resilient Optimized Base64 Data URL (Guaranteed instant success)
+  // Tier 4: Resilient Optimized Base64 Data URL
+  // Compress aggressively to stay well under Firestore's 1MB per-field limit.
   try {
-    const dataUrl = await compressImageToDataUrl(file, 1280, 0.84);
+    const dataUrl = await compressImageToDataUrl(file, 800, 0.7);
+    const maxBytes = 750_000;
+    if (dataUrl.length > maxBytes) {
+      const dataUrl2 = await compressImageToDataUrl(file, 600, 0.5);
+      if (dataUrl2.length > maxBytes) {
+        throw new Error('Image too large for local storage. Please use a smaller image.');
+      }
+      const uniqueId = `${folder}/local_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      return { secureUrl: dataUrl2, publicId: uniqueId, bytes: dataUrl2.length };
+    }
     const uniqueId = `${folder}/local_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     return {
       secureUrl: dataUrl,
@@ -183,12 +228,8 @@ export async function uploadImageToCloudinary(
       bytes: dataUrl.length,
     };
   } catch (err) {
-    const rawPreview = await getImagePreview(file);
-    return {
-      secureUrl: rawPreview,
-      publicId: `${folder}/fallback_${Date.now()}`,
-      bytes: file.size,
-    };
+    console.warn('[upload] Base64 fallback failed:', err);
+    throw new Error('Image upload failed. No upload backend is configured. Please set up Cloudinary or Firebase Storage.');
   }
 }
 

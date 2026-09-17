@@ -315,6 +315,14 @@ service cloud.firestore {
       allow create, update, delete: if request.auth != null;
     }
 
+    // ── User Image Asset Library ──
+    match /user_uploads/{uploadId} {
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow update: if false;
+    }
+
     // ── Catch-all: deny everything else ──
     match /{document=**} {
       allow read, write: if false;

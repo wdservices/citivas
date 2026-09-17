@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { normalizeBusinessDoc, normalizeListingDoc, matchesState } from "@/lib/normalizeBusiness";
 import { Search, Star, MapPin, ChevronRight, ArrowLeft, Store } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import SEO from "@/components/SEO";
@@ -83,32 +84,35 @@ const AllBusinessesPage = () => {
     const fetchItems = async () => {
       try {
         const [bizSnap, propSnap] = await Promise.all([
-          getDocs(query(collection(db, "businesses"), where("state", "==", state))),
+          getDocs(collection(db, "businesses")),
           getDocs(query(collection(db, "house_listings"), where("miniSiteActive", "==", true))),
         ]);
 
-        const bizItems: BusinessItem[] = bizSnap.docs.map((doc) => ({ id: doc.id, ...(doc.data() as any), _source: "business" })).filter((item) => {
-          if (item.category === "Event" || item.category === "Events" || item.category === "Event Venue") return false;
-          return true;
-        });
+        const bizItems: BusinessItem[] = bizSnap.docs
+          .map((doc) => ({ ...normalizeBusinessDoc(doc.id, doc.data()), _source: "business" as const }))
+          .filter((item) => matchesState((item as any).state, state))
+          .filter((item) => {
+            if (item.category === "Event" || item.category === "Events" || item.category === "Event Venue") return false;
+            return true;
+          });
 
         const propItems: BusinessItem[] = propSnap.docs
-          .filter((doc) => (doc.data() as any).state === state)
+          .filter((doc) => matchesState((doc.data() as any).state, state))
           .map((doc) => {
-          const data = doc.data() as any;
-          const slug = (data.title || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "");
+          const n = normalizeListingDoc(doc.id, doc.data());
+          const slug = (n.title || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "");
           return {
-            id: doc.id,
-            title: data.title || "",
-            description: data.description || "",
-            image: data.image || (data.images && data.images[0]) || "",
-            images: data.images || [],
+            id: n.id,
+            title: n.title || "",
+            description: n.description || "",
+            image: n.image || "",
+            images: n.images || [],
             category: "Shortlet & Hotel",
-            rating: data.rating || 0,
-            price: data.price || "",
-            location: data.location || "",
-            phone: data.phone || "",
-            whatsapp: data.whatsapp || "",
+            rating: n.rating || 0,
+            price: typeof n.price === "string" ? n.price : String(n.price || ""),
+            location: n.location || "",
+            phone: n.phone || "",
+            whatsapp: (doc.data() as any).whatsapp || n.phone || "",
             tags: ["shortlet", "hotel", "property"],
             _source: "house_listing",
             slug,

@@ -1,9 +1,12 @@
 import { useState, useRef, useCallback } from 'react';
-import { Upload, X, Image as ImageIcon, Loader2, Plus } from 'lucide-react';
+import { Upload, X, Image as ImageIcon, Loader2, Plus, FolderOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
 import { uploadImageToCloudinary, validateImageFile, CLOUDINARY_FOLDERS } from '@/lib/cloudinary';
+import { useAuth } from '@/contexts/AuthContext';
+import { useTrackUpload } from '@/lib/useFirestore';
+import ImageAssetDialog from '@/components/ImageAssetDialog';
 
 interface MultiImageUploadProps {
   onUploadSuccess: (result: { secureUrl: string; publicId: string }) => void;
@@ -35,8 +38,11 @@ const MultiImageUpload: React.FC<MultiImageUploadProps> = ({
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [dragActive, setDragActive] = useState(false);
+  const [libraryOpen, setLibraryOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+  const { user } = useAuth();
+  const trackUpload = useTrackUpload();
 
   const handleFileSelect = useCallback(async (file: File) => {
     if (disabled || isUploading) return;
@@ -61,6 +67,9 @@ const MultiImageUpload: React.FC<MultiImageUploadProps> = ({
       const result = await uploadImageToCloudinary(file, { folder });
       setUploadProgress(100);
       onUploadSuccess({ secureUrl: result.secureUrl, publicId: result.publicId });
+      if (user?.id) {
+        trackUpload.mutate({ userId: user.id, url: result.secureUrl, publicId: result.publicId, folder, bytes: result.bytes || file.size });
+      }
       toast({ title: "Upload Successful", description: "Image uploaded!" });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Upload failed';
@@ -69,7 +78,7 @@ const MultiImageUpload: React.FC<MultiImageUploadProps> = ({
       setIsUploading(false);
       setUploadProgress(0);
     }
-  }, [disabled, isUploading, maxSize, maxImages, currentImages.length, onUploadSuccess, folder, toast]);
+  }, [disabled, isUploading, maxSize, maxImages, currentImages.length, onUploadSuccess, folder, toast, user?.id, trackUpload]);
 
   const handleFileInput = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -89,43 +98,63 @@ const MultiImageUpload: React.FC<MultiImageUploadProps> = ({
     }
   }, [handleFileSelect]);
 
+  const handleLibrarySelect = (images: { url: string; publicId: string }[]) => {
+    const remaining = maxImages - currentImages.length;
+    const toAdd = images.slice(0, remaining);
+    toAdd.forEach((img) => onUploadSuccess({ secureUrl: img.url, publicId: img.publicId }));
+    if (toAdd.length < images.length) {
+      toast({ title: "Some images skipped", description: `Only ${remaining} slots remaining.`, variant: "destructive" });
+    }
+  };
+
   return (
     <div className={`space-y-3 ${className}`}>
-      {/* Upload dropzone */}
-      <div
-        className={`
-          relative border-2 border-dashed rounded-xl p-4 text-center cursor-pointer
-          transition-all duration-200
-          ${dragActive ? 'border-primary bg-primary/5' : 'border-muted-foreground/20 hover:border-primary/50'}
-          ${isUploading ? 'pointer-events-none opacity-75' : ''}
-          ${disabled ? 'pointer-events-none opacity-50' : ''}
-        `}
-        onDrop={handleDrop}
-        onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragActive(true); }}
-        onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setDragActive(false); }}
-        onClick={() => fileInputRef.current?.click()}
-      >
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept={accept}
-          multiple
-          onChange={handleFileInput}
-          disabled={disabled || isUploading}
-          className="hidden"
-        />
-        {isUploading ? (
-          <div className="flex flex-col items-center gap-2 py-2">
-            <Loader2 className="h-6 w-6 animate-spin text-primary" />
-            <p className="text-xs text-muted-foreground">Uploading... {uploadProgress > 0 && `${uploadProgress}%`}</p>
-            {uploadProgress > 0 && <Progress value={uploadProgress} className="w-full max-w-[200px]" />}
-          </div>
-        ) : (
-          <div className="flex flex-col items-center gap-1 py-2">
-            <Plus className="h-6 w-6 text-muted-foreground" />
-            <p className="text-xs text-muted-foreground">{currentImages.length}/{maxImages} images — {placeholder}</p>
-          </div>
-        )}
+      {/* Upload dropzone + library button */}
+      <div className="flex gap-2">
+        <div
+          className={`
+            flex-1 relative border-2 border-dashed rounded-xl p-4 text-center cursor-pointer
+            transition-all duration-200
+            ${dragActive ? 'border-primary bg-primary/5' : 'border-muted-foreground/20 hover:border-primary/50'}
+            ${isUploading ? 'pointer-events-none opacity-75' : ''}
+            ${disabled ? 'pointer-events-none opacity-50' : ''}
+          `}
+          onDrop={handleDrop}
+          onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragActive(true); }}
+          onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setDragActive(false); }}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept={accept}
+            multiple
+            onChange={handleFileInput}
+            disabled={disabled || isUploading}
+            className="hidden"
+          />
+          {isUploading ? (
+            <div className="flex flex-col items-center gap-2 py-2">
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              <p className="text-xs text-muted-foreground">Uploading... {uploadProgress > 0 && `${uploadProgress}%`}</p>
+              {uploadProgress > 0 && <Progress value={uploadProgress} className="w-full max-w-[200px]" />}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-1 py-2">
+              <Plus className="h-6 w-6 text-muted-foreground" />
+              <p className="text-xs text-muted-foreground">{currentImages.length}/{maxImages} images — {placeholder}</p>
+            </div>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => setLibraryOpen(true)}
+          disabled={disabled || currentImages.length >= maxImages}
+          className="shrink-0 flex flex-col items-center justify-center gap-1 px-3 rounded-xl border-2 border-dashed border-muted-foreground/20 hover:border-primary/50 hover:bg-primary/5 transition-all text-muted-foreground disabled:opacity-50 disabled:pointer-events-none"
+        >
+          <FolderOpen className="h-5 w-5" />
+          <span className="text-[10px] leading-tight">Library</span>
+        </button>
       </div>
 
       {/* Image preview grid */}
@@ -150,6 +179,14 @@ const MultiImageUpload: React.FC<MultiImageUploadProps> = ({
           ))}
         </div>
       )}
+
+      {/* Asset library dialog */}
+      <ImageAssetDialog
+        open={libraryOpen}
+        onOpenChange={setLibraryOpen}
+        onSelect={handleLibrarySelect}
+        maxSelect={maxImages - currentImages.length}
+      />
     </div>
   );
 };

@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { normalizeBusinessDoc } from "@/lib/normalizeBusiness";
 import SearchHeader from "@/components/SearchHeader";
 import SEO from "@/components/SEO";
 import ListingCard from "@/components/ListingCard";
@@ -30,12 +31,11 @@ const OthersPage = () => {
   useEffect(() => {
     const fetchItems = async () => {
       try {
-        const q = query(collection(db, "businesses"), where("category", "==", "Other"));
+        const q = query(collection(db, "businesses"));
         const querySnapshot = await getDocs(q);
-        const data = querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-        })) as OtherItem[];
+        const data = querySnapshot.docs
+          .map(doc => normalizeBusinessDoc(doc.id, doc.data()))
+          .filter((d: any) => d.category === "Other" || d.category === "Business Services") as OtherItem[];
         setItems(data);
       } catch (err) {
         setError("Failed to fetch items.");

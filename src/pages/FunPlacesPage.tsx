@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { normalizeBusinessDoc } from "@/lib/normalizeBusiness";
 import SearchHeader from "@/components/SearchHeader";
 import ListingCard from "@/components/ListingCard";
 
@@ -32,10 +33,7 @@ const FunPlacesPage = () => {
         const q = query(collection(db, "businesses"));
         const querySnapshot = await getDocs(q);
         const placesData = querySnapshot.docs
-          .map(doc => ({
-            id: doc.id,
-            ...doc.data(),
-          }))
+          .map(doc => normalizeBusinessDoc(doc.id, doc.data()))
           .filter((doc: any) => doc.category === "Fun") as FunPlace[];
         setPlaces(placesData);
       } catch (err) {

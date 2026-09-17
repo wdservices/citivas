@@ -51,17 +51,18 @@ const EventsPage = () => {
     return rawEvents.map((raw: any) => {
       const tickets = raw.ticketTypes || [];
       const totalMax = tickets.reduce((sum: number, t: any) => sum + (Number(t.quantity) || 0), 0);
+      const cover = raw.image || raw.coverImageUrl || (Array.isArray(raw.images) && raw.images[0]) || (Array.isArray(raw.photos) && raw.photos[0]) || getMockImage('Event');
       return {
         id: raw.id,
         title: fmt(raw.title) || 'Untitled Event',
         description: fmt(raw.description) || '',
-        date: raw.startDate || '',
+        date: raw.startDate || raw.startDateTime || '',
         time: raw.startTime || '',
-        location: fmt(raw.location) || 'Location TBA',
-        price: tickets.length > 0 ? Number(tickets[0].price) || 0 : 0,
+        location: fmt(raw.location || raw.venue || [raw.city, raw.state].filter(Boolean).join(', ')) || 'Location TBA',
+        price: tickets.length > 0 ? Number(tickets[0].price) || 0 : Number(raw.priceNum) || 0,
         currency: 'NGN',
-        image: raw.image || getMockImage('Event'),
-        category: raw.tags?.[0] || 'General',
+        image: cover,
+        category: raw.tags?.[0] || raw.category || raw.eventType || 'General',
         organizer: '',
         attendees: 0,
         maxAttendees: totalMax,

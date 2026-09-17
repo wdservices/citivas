@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { collection, getDocs } from "firebase/firestore";
+import { collection, collectionGroup, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { normalizeListingDoc } from "@/lib/normalizeBusiness";
 import SearchHeader from "@/components/SearchHeader";
 import ListingCard from "@/components/ListingCard";
 import MiniSiteStrip from "@/components/MiniSiteStrip";
@@ -207,23 +208,30 @@ const AirbnbPage = () => {
   useEffect(() => {
     const fetchPlaces = async () => {
       try {
-        const snapshot = await getDocs(collection(db, "house_listings"));
-        const firebasePlaces = snapshot.docs.map(doc => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            title: data.title || data.name || "Untitled Property",
-            description: data.description || "",
-            image: data.image || (data.images && data.images[0]) || "",
-            category: data.propertySubType === 'hotel' ? 'Hotel' : data.propertySubType === 'rent' ? 'For Rent' : data.propertySubType === 'land' ? 'Land' : data.category || data.type || "Rental",
-            rating: Number(data.rating || 0),
-            price: data.price || (data.pricePerNight ? `₦${data.pricePerNight.toLocaleString()}/night` : ""),
-            location: data.location || data.address || "",
-            phone: data.phone || "",
-            website: data.website || "",
-            isOpen: data.isOpen ?? true
-          } as AirbnbPlace;
-        });
+        const [topSnap, groupSnap] = await Promise.all([
+          getDocs(collection(db, "house_listings")),
+          getDocs(collectionGroup(db, "properties")).catch(() => ({ docs: [] }) as any),
+        ]);
+        const seen = new Set<string>();
+        const firebasePlaces: AirbnbPlace[] = [];
+        for (const doc of [...topSnap.docs, ...groupSnap.docs]) {
+          if (seen.has(doc.id)) continue;
+          seen.add(doc.id);
+          const n = normalizeListingDoc(doc.id, doc.data());
+          firebasePlaces.push({
+            id: n.id,
+            title: n.title || "Untitled Property",
+            description: n.description || "",
+            image: n.image || "",
+            category: n.category || "Rental",
+            rating: Number(n.rating || 0),
+            price: typeof n.price === "string" ? n.price : String(n.price || ""),
+            location: n.location || "",
+            phone: n.phone || "",
+            website: (doc.data() as any).website || "",
+            isOpen: true,
+          } as AirbnbPlace);
+        }
         
         // Remove duplicates between mock data and firebase data if any
         const allPlaces = [...mockData];

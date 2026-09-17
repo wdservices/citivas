@@ -5,6 +5,7 @@ import {
   limit as fsLimit, orderBy, collectionGroup,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { stateVariants } from "@/lib/normalizeBusiness";
 
 // ── Safe field formatter (handles GeoPoint, objects, etc.) ──
 export const fmt = (val: any): string => {
@@ -77,13 +78,24 @@ export function useDoc<T = any>(collectionName: string, docId: string | null) {
 // ────────────────────────────────────────────
 
 export function useMarketplaceItems() {
-  // Business-first: products ONLY live under businesses/{businessId}/products
-  // Use collectionGroup to fetch across all businesses
+  // Products live in two places: business subcollections
+  // (businesses/{bid}/products) AND legacy top-level `marketplace`
+  // (individual sellers). Merge both, dedupe by doc id.
   return useQuery({
     queryKey: ["marketplace_all"],
     queryFn: async () => {
-      const groupSnap = await getDocs(collectionGroup(db, "products"));
-      return groupSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const [groupSnap, topSnap] = await Promise.all([
+        getDocs(collectionGroup(db, "products")).catch(() => ({ docs: [] }) as any),
+        getDocs(collection(db, "marketplace")).catch(() => ({ docs: [] }) as any),
+      ]);
+      const seen = new Set<string>();
+      const out: any[] = [];
+      for (const d of [...groupSnap.docs, ...topSnap.docs]) {
+        if (seen.has(d.id)) continue;
+        seen.add(d.id);
+        out.push({ id: d.id, ...d.data() });
+      }
+      return out;
     },
     staleTime: 3 * 60 * 1000,
     gcTime: 15 * 60 * 1000,
@@ -91,17 +103,31 @@ export function useMarketplaceItems() {
 }
 
 export function useBusinesses(state?: string) {
-  const filters = state ? [where("state", "==", state)] : undefined;
+  // DB stores city names ("Port Harcourt") while RegionContext uses state
+  // names ("Rivers") — query all variants so seeded rows are not filtered out.
+  const variants = state ? stateVariants(state) : undefined;
+  const filters = variants ? [where("state", "in", variants.slice(0, 10))] : undefined;
   return useCollection("businesses", filters);
 }
 
 export function useEvents() {
-  // Business-first: events ONLY live under businesses/{businessId}/events
+  // Events live in business subcollections (businesses/{bid}/events) AND
+  // legacy top-level `events`. Merge both, dedupe by doc id.
   return useQuery({
     queryKey: ["events_all"],
     queryFn: async () => {
-      const groupSnap = await getDocs(collectionGroup(db, "events"));
-      return groupSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const [groupSnap, topSnap] = await Promise.all([
+        getDocs(collectionGroup(db, "events")).catch(() => ({ docs: [] }) as any),
+        getDocs(collection(db, "events")).catch(() => ({ docs: [] }) as any),
+      ]);
+      const seen = new Set<string>();
+      const out: any[] = [];
+      for (const d of [...groupSnap.docs, ...topSnap.docs]) {
+        if (seen.has(d.id)) continue;
+        seen.add(d.id);
+        out.push({ id: d.id, ...d.data() });
+      }
+      return out;
     },
     staleTime: 5 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
@@ -109,12 +135,23 @@ export function useEvents() {
 }
 
 export function useHouseListings() {
-  // Business-first: properties ONLY live under businesses/{businessId}/properties
+  // Properties live in business subcollections (businesses/{bid}/properties)
+  // AND legacy top-level `house_listings`. Merge both, dedupe by doc id.
   return useQuery({
     queryKey: ["house_listings_and_properties"],
     queryFn: async () => {
-      const groupSnap = await getDocs(collectionGroup(db, "properties"));
-      return groupSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const [groupSnap, topSnap] = await Promise.all([
+        getDocs(collectionGroup(db, "properties")).catch(() => ({ docs: [] }) as any),
+        getDocs(collection(db, "house_listings")).catch(() => ({ docs: [] }) as any),
+      ]);
+      const seen = new Set<string>();
+      const out: any[] = [];
+      for (const d of [...groupSnap.docs, ...topSnap.docs]) {
+        if (seen.has(d.id)) continue;
+        seen.add(d.id);
+        out.push({ id: d.id, ...d.data() });
+      }
+      return out;
     },
     staleTime: 5 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
@@ -217,11 +254,13 @@ export function useMyListings(userId: string | null) {
       if (!userId) return { businesses: [], products: [], properties: [], events: [] };
       
       try {
-        const [bizSnap, propGroupSnap, prodGroupSnap, eventGroupSnap] = await Promise.all([
+        const [bizSnap, propGroupSnap, prodGroupSnap, eventGroupSnap, marketplaceSnap, houseListingsSnap] = await Promise.all([
           getDocs(query(collection(db, "businesses"), where("ownerId", "==", userId))),
           getDocs(collectionGroup(db, "properties")).catch(() => ({ docs: [] } as any)),
           getDocs(collectionGroup(db, "products")).catch(() => ({ docs: [] } as any)),
           getDocs(collectionGroup(db, "events")).catch(() => ({ docs: [] } as any)),
+          getDocs(query(collection(db, "marketplace"), where("ownerId", "==", userId))).catch(() => ({ docs: [] } as any)),
+          getDocs(query(collection(db, "house_listings"), where("ownerId", "==", userId))).catch((err) => { console.error("[useMyListings] house_listings query failed:", err); return { docs: [] } as any; }),
         ]);
 
         const userBizIds = new Set(bizSnap.docs.map((d) => d.id));
@@ -234,9 +273,21 @@ export function useMyListings(userId: string | null) {
             propMap.set(d.id, { id: d.id, ...data });
           }
         });
+        houseListingsSnap.docs.forEach((d: any) => {
+          const data = d.data();
+          if (data.ownerId === userId || (data.businessId && userBizIds.has(data.businessId))) {
+            propMap.set(d.id, { id: d.id, ...data });
+          }
+        });
 
         const prodMap = new Map<string, any>();
         prodGroupSnap.docs.forEach((d: any) => {
+          const data = d.data();
+          if (data.ownerId === userId || (data.businessId && userBizIds.has(data.businessId))) {
+            prodMap.set(d.id, { id: d.id, ...data });
+          }
+        });
+        marketplaceSnap.docs.forEach((d: any) => {
           const data = d.data();
           if (data.ownerId === userId || (data.businessId && userBizIds.has(data.businessId))) {
             prodMap.set(d.id, { id: d.id, ...data });
@@ -251,11 +302,13 @@ export function useMyListings(userId: string | null) {
           }
         });
         
+        const props = Array.from(propMap.values());
+        console.log("[useMyListings] Debug:", { bizCount: bizSnap.docs.length, propCount: props.length, prodCount: Array.from(prodMap.values()).length, eventCount: Array.from(eventMap.values()).length, houseListingsCount: houseListingsSnap.docs.length });
         return {
           businesses: bizSnap.docs.map((d) => ({ id: d.id, ...d.data() } as any)).filter((b: any) => b.category !== "Event" && b.category !== "Events"),
           events: Array.from(eventMap.values()),
           products: Array.from(prodMap.values()),
-          properties: Array.from(propMap.values()),
+          properties: props,
         };
       } catch (error) {
         console.error("[useMyListings] Error:", error);
@@ -394,6 +447,72 @@ export function useCreateReview() {
     },
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: ["reviews", variables.targetId] });
+    },
+  });
+}
+
+// ── User Image Asset Library ──
+
+export interface UserUpload {
+  id: string;
+  url: string;
+  publicId: string;
+  folder: string;
+  bytes: number;
+  createdAt: any;
+}
+
+export function useUserAssets(userId: string | null) {
+  return useQuery({
+    queryKey: ["userAssets", userId],
+    queryFn: async () => {
+      if (!userId) return [];
+      try {
+        const snap = await getDocs(
+          query(collection(db, "user_uploads"), where("userId", "==", userId))
+        );
+        return snap.docs
+          .map((d) => ({ id: d.id, ...d.data() } as UserUpload))
+          .sort((a, b) => {
+            const ta = a.createdAt?.toMillis?.() ?? 0;
+            const tb = b.createdAt?.toMillis?.() ?? 0;
+            return tb - ta;
+          });
+      } catch (err) {
+        console.error("[useUserAssets] Error:", err);
+        return [];
+      }
+    },
+    enabled: !!userId,
+    staleTime: 30_000,
+    gcTime: 5 * 60_000,
+  });
+}
+
+export function useTrackUpload() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: { userId: string; url: string; publicId: string; folder: string; bytes: number }) => {
+      return addDoc(collection(db, "user_uploads"), {
+        ...data,
+        createdAt: serverTimestamp(),
+      });
+    },
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: ["userAssets", variables.userId] });
+    },
+  });
+}
+
+export function useDeleteAsset() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, userId }: { id: string; userId: string }) => {
+      await deleteDoc(doc(db, "user_uploads", id));
+      return id;
+    },
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: ["userAssets", variables.userId] });
     },
   });
 }
