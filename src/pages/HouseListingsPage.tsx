@@ -35,6 +35,8 @@ interface HouseListing {
   location: string;
   status: string;
   ownerId: string;
+  miniSiteActive?: boolean;
+  slug?: string;
 }
 
 const u = (id: string, w = 900) =>
@@ -521,6 +523,7 @@ const HouseListingsPage = () => {
                   <div
                     key={listing.id}
                     className="group bg-card/40 backdrop-blur-sm border border-border/50 rounded-2xl overflow-hidden hover:border-primary/30 transition-all duration-300 shadow-sm hover:shadow-lg hover:shadow-primary/5 cursor-pointer"
+                    onClick={() => listing.miniSiteActive && listing.slug ? navigate(`/property/${listing.slug}`) : navigate(`/marketplace/${listing.id}`)}
                   >
                     {/* Image */}
                     <div className="relative aspect-[4/3] overflow-hidden">
@@ -602,6 +605,7 @@ const HouseListingsPage = () => {
                   <div
                     key={listing.id}
                     className="group bg-card/40 backdrop-blur-sm border border-border/50 rounded-2xl overflow-hidden hover:border-primary/30 transition-all duration-300 shadow-sm hover:shadow-lg hover:shadow-primary/5 cursor-pointer flex flex-col md:flex-row"
+                    onClick={() => listing.miniSiteActive && listing.slug ? navigate(`/property/${listing.slug}`) : navigate(`/marketplace/${listing.id}`)}
                   >
                     <div className="md:w-72 h-48 md:h-auto relative overflow-hidden shrink-0">
                       {listing.image ? (

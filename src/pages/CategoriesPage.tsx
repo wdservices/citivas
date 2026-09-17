@@ -5,7 +5,6 @@ import CategoryGrid from "@/components/CategoryGrid";
 import HeroSlider from "@/components/HeroSlider";
 import SEO from "@/components/SEO";
 import { getMockImage } from "@/lib/mockImages";
-import { propertySlug } from "@/content/miniSites";
 import { useRegion } from "@/contexts/RegionContext";
 import { useBusinesses, useEvents, useMarketplaceItems, useHouseListings, fmt } from "@/lib/useFirestore";
 import { normalizeBusinessDoc, normalizeListingDoc } from "@/lib/normalizeBusiness";
@@ -70,21 +69,28 @@ const CategoriesPage = () => {
       .map((b: any) => ({ id: b.id, title: fmt(b.title), description: fmt(b.description), image: b.image || "", category: fmt(b.category), rating: b.rating || 0, location: fmt(b.location), price: fmt(b.price), createdAt: b.createdAt }));
   }, [eventData]);
 
-  const isProperty = (cat: unknown) =>
-    ["property", "properties", "apartment", "shortlet", "house", "real estate", "stays"].includes(
-      String(cat || "").toLowerCase()
-    );
+  const isProperty = (cat: unknown) => {
+    const c = String(cat || "").toLowerCase();
+    return c.includes("property") || c.includes("apartment") || c.includes("shortlet")
+      || c.includes("house") || c.includes("real estate") || c.includes("stays")
+      || c.includes("hotel") || c.includes("rent") || c === "land";
+  };
 
   const marketplace = useMemo(() => {
     if (!mktData) return [];
     return mktData
       .map((m: any) => normalizeListingDoc(m.id, m))
-      .filter((m: any) => !isProperty(m.category) && !isProperty((m as any).type))
+      .filter((m: any) => (m as any)._source !== "house_listings" && !isProperty(m.category) && !isProperty((m as any).type))
       .slice(0, 4)
       .map((m: any) => ({ id: m.id, title: fmt(m.title), description: fmt(m.description), image: m.image || "", category: fmt(m.category), rating: m.rating || 0, location: fmt(m.location), price: fmt(m.price), createdAt: m.createdAt }));
   }, [mktData]);
 
   const properties = useMemo(() => {
+    const propIds = new Set(
+      propData
+        ? propData.map((p: any) => p.id)
+        : []
+    );
     const propItems = propData
       ? propData.map((p: any) => {
         const n = normalizeListingDoc(p.id, p);
@@ -106,7 +112,7 @@ const CategoriesPage = () => {
     const mktPropertyItems = mktData
       ? mktData
           .map((m: any) => normalizeListingDoc(m.id, m))
-          .filter((m: any) => isProperty(m.category))
+          .filter((m: any) => isProperty(m.category) && !propIds.has(m.id) && (m as any)._source !== "house_listings")
           .map((m: any) => ({
             id: m.id,
             title: fmt(m.title),
@@ -148,7 +154,7 @@ const CategoriesPage = () => {
     if (item.miniSiteActive && item.slug) {
       navigate(`/property/${item.slug}`);
     } else {
-      navigate(`/property/${propertySlug(r(item.title) || "listing", item.id)}`);
+      navigate(`/marketplace/${item.id}`);
     }
   };
 

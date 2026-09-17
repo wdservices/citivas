@@ -37,6 +37,20 @@ type ProductData = {
   city?: string;
   lat?: number;
   lon?: number;
+  propertySubType?: string;
+  plotSize?: string;
+  sizeUnit?: string;
+  saleType?: string;
+  landUseType?: string;
+  topography?: string;
+  accessRoad?: string;
+  fenced?: boolean;
+  isFenced?: boolean;
+  surveyPlan?: boolean;
+  hasSurveyPlan?: boolean;
+  titleType?: string;
+  titleDocument?: string;
+  streetAddress?: string;
 };
 
 type ReviewData = {
@@ -72,6 +86,7 @@ const MarketplaceDetailPage = () => {
   const [mainImageIdx, setMainImageIdx] = useState(0);
   const [parentBusiness, setParentBusiness] = useState<{ id: string; title: string; image: string; category: string; location: string } | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
+  const [isProperty, setIsProperty] = useState(false);
 
   // Review form
   const [reviewRating, setReviewRating] = useState(5);
@@ -83,10 +98,24 @@ const MarketplaceDetailPage = () => {
     const fetchProduct = async () => {
       setLoading(true);
       try {
-        const docRef = doc(db, "marketplace", id);
-        const docSnap = await getDoc(docRef);
+        let docRef = doc(db, "marketplace", id);
+        let docSnap = await getDoc(docRef);
+        let source = "marketplace";
+        if (!docSnap.exists()) {
+          docRef = doc(db, "house_listings", id);
+          docSnap = await getDoc(docRef);
+          source = "house_listings";
+        }
         if (docSnap.exists()) {
           const raw = docSnap.data() as any;
+          setIsProperty(source === "house_listings");
+
+          // Redirect mini-site listings to their mini-site page
+          if (source === "house_listings" && raw.miniSiteActive && raw.title) {
+            const slug = raw.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "");
+            navigate(`/property/${slug}`, { replace: true });
+            return;
+          }
           setProduct({
             id: docSnap.id,
             title: formatField(raw.title) || "Untitled",
@@ -104,6 +133,20 @@ const MarketplaceDetailPage = () => {
             city: raw.city || "",
             lat: raw.lat,
             lon: raw.lon,
+            propertySubType: raw.propertySubType || "",
+            plotSize: raw.plotSize || "",
+            sizeUnit: raw.sizeUnit || "",
+            saleType: raw.saleType || "",
+            landUseType: raw.landUseType || "",
+            topography: raw.topography || "",
+            accessRoad: raw.accessRoad || "",
+            fenced: raw.fenced ?? raw.isFenced ?? false,
+            isFenced: raw.isFenced ?? raw.fenced ?? false,
+            surveyPlan: raw.surveyPlan ?? raw.hasSurveyPlan ?? false,
+            hasSurveyPlan: raw.hasSurveyPlan ?? raw.surveyPlan ?? false,
+            titleType: raw.titleType || raw.titleDocument || "",
+            titleDocument: raw.titleDocument || raw.titleType || "",
+            streetAddress: raw.streetAddress || "",
           });
 
           // Fetch parent business if businessId exists
@@ -211,7 +254,7 @@ const MarketplaceDetailPage = () => {
         <div className="flex flex-col items-center justify-center py-20 px-4 text-center">
           <h2 className="text-xl font-bold text-foreground mb-2">Product not found</h2>
           <p className="text-muted-foreground mb-6">This item may have been sold or removed.</p>
-          <Button onClick={() => navigate("/marketplace")}>Back to Marketplace</Button>
+          <Button onClick={() => navigate(-1)}>Back</Button>
         </div>
       </div>
     );
@@ -243,7 +286,7 @@ const MarketplaceDetailPage = () => {
       <main className="max-w-7xl mx-auto px-4 md:px-6 py-6 lg:py-10">
         <div className="hidden lg:flex items-center justify-between mb-8">
           <Button variant="ghost" onClick={() => navigate(-1)} className="gap-2 pl-0 hover:bg-transparent hover:text-primary">
-            <ArrowLeft className="h-4 w-4" /> Back to Marketplace
+            <ArrowLeft className="h-4 h-4" /> {isProperty ? "Back to Listings" : "Back to Marketplace"}
           </Button>
           <div className="flex items-center gap-2">
             <Button variant="outline" className={`gap-2 transition-colors ${liked ? "border-destructive/50 bg-destructive/10 text-destructive" : ""}`} onClick={() => setLiked(!liked)}>
@@ -322,7 +365,7 @@ const MarketplaceDetailPage = () => {
               </div>
               <div className="mt-4 flex items-center gap-2 text-success font-medium text-xs bg-success/10 w-fit px-3 py-1.5 rounded-lg border border-success/20">
                 <ShieldCheck className="w-4 h-4" />
-                Secure payment through Citivas
+                {isProperty ? "Verified listing on Citivas" : "Secure payment through Citivas"}
               </div>
             </div>
 
@@ -362,10 +405,63 @@ const MarketplaceDetailPage = () => {
               <p className="text-muted-foreground text-sm leading-relaxed">{product.description}</p>
             </div>
 
+            {/* Land Details */}
+            {isProperty && product.propertySubType === "land" && (
+              <div className="space-y-4">
+                <h4 className="font-semibold text-lg">Land Details</h4>
+                <div className="grid grid-cols-2 gap-4 p-5 rounded-2xl bg-card/60 border border-border/50 shadow-sm">
+                  {product.saleType && (
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Sale Type</p>
+                      <p className="font-semibold text-sm text-foreground capitalize">{product.saleType}</p>
+                    </div>
+                  )}
+                  {product.landUseType && (
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Land Use</p>
+                      <p className="font-semibold text-sm text-foreground">{product.landUseType}</p>
+                    </div>
+                  )}
+                  {product.plotSize && (
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Plot Size</p>
+                      <p className="font-semibold text-sm text-foreground">{product.plotSize} {product.sizeUnit || "plots"}</p>
+                    </div>
+                  )}
+                  {product.titleType && (
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Title Document</p>
+                      <p className="font-semibold text-sm text-foreground">{product.titleType}</p>
+                    </div>
+                  )}
+                  {product.topography && (
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Topography</p>
+                      <p className="font-semibold text-sm text-foreground">{product.topography}</p>
+                    </div>
+                  )}
+                  {product.accessRoad && (
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Access Road</p>
+                      <p className="font-semibold text-sm text-foreground">{product.accessRoad}</p>
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Fenced</p>
+                    <p className="font-semibold text-sm text-foreground">{(product.fenced || product.isFenced) ? "Yes" : "No"}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Survey Plan</p>
+                    <p className="font-semibold text-sm text-foreground">{(product.surveyPlan || product.hasSurveyPlan) ? "Available" : "Not Available"}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* CTA */}
             <div className="sticky bottom-4 grid grid-cols-2 gap-3 mt-auto pt-4 z-10">
               <Button className="w-full h-12 font-bold rounded-full bg-accent text-accent-foreground hover:bg-accent/90 gap-2">
-                <ShoppingCart className="w-5 h-5" /> Buy Now
+                {isProperty ? <><MapPin className="w-5 h-5" /> Inquire Now</> : <><ShoppingCart className="w-5 h-5" /> Buy Now</>}
               </Button>
               <Button
                 variant="outline"
@@ -386,15 +482,15 @@ const MarketplaceDetailPage = () => {
             <div className="flex justify-between items-center px-4 py-3 rounded-xl bg-card/40 border border-border/50">
               <div className="flex flex-col items-center gap-1 opacity-70 hover:opacity-100 transition-opacity">
                 <ShieldCheck className="w-5 h-5 text-primary" />
-                <span className="text-[9px] font-bold uppercase tracking-wider text-center leading-tight">Buyer Protection</span>
+                <span className="text-[9px] font-bold uppercase tracking-wider text-center leading-tight">{isProperty ? "Verified" : "Buyer Protection"}</span>
               </div>
               <div className="flex flex-col items-center gap-1 opacity-70 hover:opacity-100 transition-opacity">
-                <Truck className="w-5 h-5 text-primary" />
-                <span className="text-[9px] font-bold uppercase tracking-wider text-center leading-tight">Fast Delivery</span>
+                {isProperty ? <MapPin className="w-5 h-5 text-primary" /> : <Truck className="w-5 h-5 text-primary" />}
+                <span className="text-[9px] font-bold uppercase tracking-wider text-center leading-tight">{isProperty ? "Location" : "Fast Delivery"}</span>
               </div>
               <div className="flex flex-col items-center gap-1 opacity-70 hover:opacity-100 transition-opacity">
                 <RefreshCcw className="w-5 h-5 text-primary" />
-                <span className="text-[9px] font-bold uppercase tracking-wider text-center leading-tight">Easy Returns</span>
+                <span className="text-[9px] font-bold uppercase tracking-wider text-center leading-tight">{isProperty ? "Easy Contact" : "Easy Returns"}</span>
               </div>
             </div>
           </div>

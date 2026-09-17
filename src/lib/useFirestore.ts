@@ -84,16 +84,17 @@ export function useMarketplaceItems() {
   return useQuery({
     queryKey: ["marketplace_all"],
     queryFn: async () => {
-      const [groupSnap, topSnap] = await Promise.all([
+      const [groupSnap, topSnap, houseSnap] = await Promise.all([
         getDocs(collectionGroup(db, "products")).catch(() => ({ docs: [] }) as any),
         getDocs(collection(db, "marketplace")).catch(() => ({ docs: [] }) as any),
+        getDocs(collection(db, "house_listings")).catch(() => ({ docs: [] }) as any),
       ]);
       const seen = new Set<string>();
       const out: any[] = [];
-      for (const d of [...groupSnap.docs, ...topSnap.docs]) {
+      for (const d of [...groupSnap.docs, ...topSnap.docs, ...houseSnap.docs]) {
         if (seen.has(d.id)) continue;
         seen.add(d.id);
-        out.push({ id: d.id, ...d.data() });
+        out.push({ id: d.id, _source: d.ref.parent.id === "house_listings" ? "house_listings" : "marketplace", ...d.data() });
       }
       return out;
     },
@@ -136,7 +137,8 @@ export function useEvents() {
 
 export function useHouseListings() {
   // Properties live in business subcollections (businesses/{bid}/properties)
-  // AND legacy top-level `house_listings`. Merge both, dedupe by doc id.
+  // AND legacy top-level `house_listings`. Merge both, dedupe by title+ownerId
+  // since ProfileDashboard writes to both collections with different doc IDs.
   return useQuery({
     queryKey: ["house_listings_and_properties"],
     queryFn: async () => {
@@ -147,9 +149,11 @@ export function useHouseListings() {
       const seen = new Set<string>();
       const out: any[] = [];
       for (const d of [...groupSnap.docs, ...topSnap.docs]) {
-        if (seen.has(d.id)) continue;
-        seen.add(d.id);
-        out.push({ id: d.id, ...d.data() });
+        const data = d.data() as any;
+        const key = `${(data.title || "").toLowerCase().trim()}|${data.ownerId || ""}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push({ id: d.id, ...data });
       }
       return out;
     },

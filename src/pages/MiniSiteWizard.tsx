@@ -186,7 +186,6 @@ export default function MiniSiteWizard() {
   const addRoom = () => setRooms(prev => [...prev, newRoom()]);
   const removeRoom = (id: string) => setRooms(prev => prev.length > 1 ? prev.filter(r => r.id !== id) : prev);
 
-  const isDataUrl = (s: string) => s.startsWith('data:');
 
   const handleSubmit = async () => {
     if (!selectedBiz || !title.trim()) return;
@@ -196,14 +195,12 @@ export default function MiniSiteWizard() {
       const derivedState = state || bizLocation.split(", ").pop() || "";
       const derivedCity = city || bizLocation.split(", ").shift() || "";
       const fullLocation = [derivedCity, derivedState, "Nigeria"].filter(Boolean).join(", ");
-      const primaryImage = images[0] || "";
+      const primaryImage = images[0] || logo || "";
       const priceNum = rooms.filter(r => r.pricePerNight > 0).length > 0
         ? Math.min(...rooms.filter(r => r.pricePerNight > 0).map(r => r.pricePerNight))
         : 0;
 
-      const safeLogo = isDataUrl(logo) ? "" : logo;
-      const safeImages = images.filter(img => !isDataUrl(img));
-      const primary = safeImages[0] || safeLogo || "";
+      const primary = images[0] || logo || "";
 
       const payload = {
         title: title.trim(),
@@ -226,10 +223,10 @@ export default function MiniSiteWizard() {
         businessId: selectedBizId,
         sellerType: "business",
         image: primary,
-        images: safeImages.length > 0 ? safeImages : primary ? [primary] : [],
+        images: images.length > 0 ? images : primary ? [primary] : [],
         imagePublicIds: imagePublicIds.length > 0 ? imagePublicIds : [],
-        logo: safeLogo,
-        logoPublicId: isDataUrl(logo) ? "" : logoPublicId || "",
+        logo: logo,
+        logoPublicId: logoPublicId || "",
         totalRooms: rooms.reduce((s, r) => s + r.quantity, 0),
         amenities: selectedAmenities,
         miniSiteActive: true,

@@ -35,6 +35,10 @@ const categories = [
   { id: "fashion", label: "Fashion", icon: Shirt },
   { id: "home", label: "Home", icon: Home },
   { id: "vehicles", label: "Vehicles", icon: Car },
+  { id: "land", label: "Land", icon: Building2 },
+  { id: "shortlet & hotel", label: "Shortlet & Hotel", icon: Building2 },
+  { id: "for rent", label: "Rent", icon: Building2 },
+  { id: "commercial", label: "Commercial", icon: Building2 },
 ];
 
 const MarketplacePage = () => {
@@ -53,6 +57,8 @@ const MarketplacePage = () => {
     if (!rawItems) return [];
     return rawItems.map((raw: any) => {
       const n = normalizeListingDoc(raw.id, raw);
+      const isHouse = raw._source === "house_listings";
+      const cat = isHouse ? (raw.type || "Property") : String(n.category || "Other");
       return {
         id: n.id,
         title: String(n.title || "Untitled"),
@@ -60,9 +66,10 @@ const MarketplacePage = () => {
         location: fmt(n.location || [raw.city, raw.state].filter(Boolean).join(", ")),
         price: fmt(n.price) || "Price on request",
         promoPrice: fmt(raw.promoPrice) || "",
-        category: String(n.category || "Other"),
+        category: cat,
         rating: n.rating || 0,
         createdAt: raw.createdAt,
+        _source: isHouse ? "house_listings" : "marketplace",
       };
     });
   }, [rawItems]);
@@ -77,8 +84,6 @@ const MarketplacePage = () => {
 
   const filteredProducts = useMemo(() => {
     return marketplaceItems.filter((l) => {
-      const cat = l.category.toLowerCase();
-      if (cat === "property" || cat === "shortlet" || cat === "rent" || cat === "land" || cat === "hotel") return false;
       const q = search.trim().toLowerCase();
       const matchSearch = !q || l.title.toLowerCase().includes(q) || l.location.toLowerCase().includes(q);
       const matchCat = activeCategory === "all" || l.category.toLowerCase() === activeCategory;

@@ -29,10 +29,12 @@ export function useMiniSites() {
           removalRes.status === "fulfilled" ? removalRes.value.docs.map((d) => d.id) : []
         );
 
-        // Properties from house_listings
+        // Properties from house_listings (only mini-site eligible)
         const userSites =
           propRes.status === "fulfilled"
-            ? propRes.value.docs.map((d) => propertyDocToMiniSite(d.id, d.data() as any))
+            ? propRes.value.docs
+                .filter((d) => (d.data() as any).miniSiteActive === true)
+                .map((d) => propertyDocToMiniSite(d.id, d.data() as any))
             : [];
 
         // Property-type items from marketplace (shortlet, hotel, apartment, etc.)

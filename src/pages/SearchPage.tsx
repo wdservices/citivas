@@ -120,7 +120,7 @@ const SearchPage = () => {
       return;
     }
     if (item.type === 'house') {
-      navigate(`/houses/${item.id}`);
+      navigate(`/marketplace/${item.id}`);
       return;
     }
     
