@@ -232,6 +232,12 @@ export default function BookingPayment() {
               <a href="/terms" className="hover:text-[#005ea4] transition-colors">Terms of Service</a>
             </div>
           </div>
+          <p className="mt-4 text-center text-xs text-gray-400">
+            A product of Bluewaves Technology and Software Development —{" "}
+            <a href="https://bwtng.live" target="_blank" rel="noopener noreferrer" className="hover:text-[#005ea4] hover:underline">
+              www.bwtng.live
+            </a>
+          </p>
         </footer>
       </div>
     );

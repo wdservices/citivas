@@ -196,6 +196,12 @@ export default function SplitItPage() {
             <Link to="/blog" className="hover:text-primary">Blog</Link>
           </div>
         </div>
+        <p className="container mx-auto px-4 mt-4 text-center text-xs text-muted-foreground">
+          A product of Bluewaves Technology and Software Development —{" "}
+          <a href="https://bwtng.live" target="_blank" rel="noopener noreferrer" className="hover:text-primary hover:underline">
+            www.bwtng.live
+          </a>
+        </p>
       </footer>
     </div>
   );

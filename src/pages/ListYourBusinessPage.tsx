@@ -143,6 +143,12 @@ export default function ListYourBusinessPage() {
           <p>© {new Date().getFullYear()} Citivas</p>
           <div className="flex gap-6"><Link to="/privacy">Privacy</Link><Link to="/terms">Terms</Link></div>
         </div>
+        <p className="container mx-auto px-4 mt-4 text-center text-xs text-muted-foreground">
+          A product of Bluewaves Technology and Software Development —{" "}
+          <a href="https://bwtng.live" target="_blank" rel="noopener noreferrer" className="hover:text-primary hover:underline">
+            www.bwtng.live
+          </a>
+        </p>
       </footer>
     </div>
   );

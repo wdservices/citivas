@@ -696,6 +696,12 @@ const DetailPage = () => {
               <span className="text-white/30">© {new Date().getFullYear()} CitivasNG</span>
             </div>
           </div>
+          <p className="mt-4 text-center text-[11px] text-white/40">
+            A product of Bluewaves Technology and Software Development —{" "}
+            <a href="https://bwtng.live" target="_blank" rel="noopener noreferrer" className="hover:text-white hover:underline">
+              www.bwtng.live
+            </a>
+          </p>
         </div>
       </footer>
 

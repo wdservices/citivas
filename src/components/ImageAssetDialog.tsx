@@ -50,6 +50,12 @@ const ImageAssetDialog = ({ open, onOpenChange, onSelect, maxSelect = 20 }: Imag
   };
 
   const handleDelete = async (asset: UserUpload) => {
+    // Display-only entries harvested from the user's listings (e.g. inline
+    // data-URL images) have no user_uploads record — remove them there.
+    if (asset.id.startsWith("harvested-")) {
+      toast({ title: "Managed by your listing", description: "This image lives on your listing — remove it there to delete it." });
+      return;
+    }
     setDeletingId(asset.id);
     try {
       if (asset.publicId && !asset.publicId.startsWith("listings/local_") && !asset.publicId.includes("/local_") && !asset.publicId.includes("/fallback_")) {

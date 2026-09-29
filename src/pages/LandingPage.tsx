@@ -664,6 +664,12 @@ const LandingPage = () => {
             <p>© {new Date().getFullYear()} Citivas. Made in Nigeria.</p>
             <p>Discover. Book. Split. Repeat.</p>
           </div>
+          <p className="mt-4 text-center text-xs text-muted-foreground">
+            A product of Bluewaves Technology and Software Development —{" "}
+            <a href="https://bwtng.live" target="_blank" rel="noopener noreferrer" className="hover:text-primary hover:underline">
+              www.bwtng.live
+            </a>
+          </p>
         </div>
       </footer>
     </div>

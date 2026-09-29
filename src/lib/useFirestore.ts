@@ -6,6 +6,7 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { stateVariants } from "@/lib/normalizeBusiness";
+import { extractPublicIdFromUrl } from "@/lib/cloudinary";
 
 // ── Safe field formatter (handles GeoPoint, objects, etc.) ──
 export const fmt = (val: any): string => {
@@ -472,16 +473,128 @@ export function useUserAssets(userId: string | null) {
     queryFn: async () => {
       if (!userId) return [];
       try {
-        const snap = await getDocs(
+        // 1) Explicitly tracked uploads (written by ImageUpload / MultiImageUpload).
+        // Resilient: if Firestore rules block this read, fall through to the
+        // harvest below instead of wiping out the whole library.
+        const trackedSnap = await getDocs(
           query(collection(db, "user_uploads"), where("userId", "==", userId))
+        ).catch((err) => {
+          console.warn("[useUserAssets] user_uploads read blocked, using harvest only:", err?.code || err);
+          return { docs: [] } as any;
+        });
+        const tracked = trackedSnap.docs.map((d) => ({ id: d.id, ...d.data() } as UserUpload));
+        const seenUrls = new Set(tracked.map((t) => t.url));
+
+        // 2) Harvest images already stored on the user's own docs (uploaded
+        // before library tracking existed, or via untracked paths). These
+        // live in Cloudinary + Firestore but have no user_uploads record.
+        const ownedCols = ["businesses", "house_listings", "marketplace", "events"];
+        const ownedSnaps = await Promise.all(
+          ownedCols.map((c) =>
+            getDocs(query(collection(db, c), where("ownerId", "==", userId), fsLimit(100))).catch(
+              () => ({ docs: [] } as any)
+            )
+          )
         );
-        return snap.docs
-          .map((d) => ({ id: d.id, ...d.data() } as UserUpload))
-          .sort((a, b) => {
-            const ta = a.createdAt?.toMillis?.() ?? 0;
-            const tb = b.createdAt?.toMillis?.() ?? 0;
-            return tb - ta;
-          });
+
+        const harvested: UserUpload[] = [];
+        const pushHarvest = (url: unknown, publicId: unknown, folder: unknown, ts: any) => {
+          if (typeof url !== "string" || seenUrls.has(url)) return;
+          const isHttp = url.startsWith("http://") || url.startsWith("https://");
+          const isDataUrl = url.startsWith("data:image/");
+          if (!isHttp && !isDataUrl) return;
+          if (url.includes("placeholder.svg")) return;
+          seenUrls.add(url);
+          const pid =
+            typeof publicId === "string" && publicId
+              ? publicId
+              : isHttp
+                ? (extractPublicIdFromUrl(url) ?? "")
+                : "";
+          harvested.push({
+            id: `harvested-${ownedSnaps.length}-${harvested.length}`,
+            url,
+            publicId: pid,
+            folder: typeof folder === "string" && folder ? folder : "listings",
+            bytes: 0,
+            createdAt: ts ?? null,
+          } as any);
+        };
+
+        for (const snap of ownedSnaps) {
+          for (const d of snap.docs as any[]) {
+            const data = d.data();
+            const ts = data?.updatedAt ?? data?.createdAt ?? null;
+            // Singular image fields + their parallel public-id fields
+            const singular: Array<[string, string]> = [
+              ["image", "imagePublicId"],
+              ["logo", "logoPublicId"],
+              ["cover", "coverPublicId"],
+              ["coverImage", "coverImagePublicId"],
+              ["banner", "bannerPublicId"],
+              ["flyer", "flyerPublicId"],
+              ["photo", "photoPublicId"],
+            ];
+            for (const [urlKey, idKey] of singular) {
+              pushHarvest(data?.[urlKey], data?.[idKey], undefined, ts);
+            }
+            // Array image fields + parallel public-id arrays
+            const arrays: Array<[string, string]> = [
+              ["images", "imagePublicIds"],
+              ["gallery", "galleryPublicIds"],
+              ["photos", "photoPublicIds"],
+            ];
+            for (const [arrKey, idsKey] of arrays) {
+              if (Array.isArray(data?.[arrKey])) {
+                const ids = Array.isArray(data?.[idsKey]) ? data[idsKey] : [];
+                data[arrKey].forEach((u: unknown, i: number) => pushHarvest(u, ids[i], undefined, ts));
+              }
+            }
+            // Room images (mini-site / hospitality listings)
+            if (Array.isArray(data?.rooms)) {
+              for (const room of data.rooms) {
+                if (Array.isArray(room?.images)) {
+                  const ids = Array.isArray(room?.imagePublicIds) ? room.imagePublicIds : [];
+                  room.images.forEach((u: unknown, i: number) => pushHarvest(u, ids[i], undefined, ts));
+                }
+              }
+            }
+          }
+        }
+
+        // 3) Backfill harvested http(s) images into user_uploads so the
+        // library is populated going forward (no re-upload needed). Data-URL
+        // images are display-only (too large to duplicate).
+        const merged: UserUpload[] = [...tracked];
+        const BACKFILL_CAP = 100;
+        let backfilled = 0;
+        for (const h of harvested) {
+          const isHttp = h.url.startsWith("http");
+          if (isHttp && backfilled < BACKFILL_CAP) {
+            try {
+              const ref = await addDoc(collection(db, "user_uploads"), {
+                userId,
+                url: h.url,
+                publicId: h.publicId,
+                folder: h.folder,
+                bytes: 0,
+                createdAt: serverTimestamp(),
+              });
+              merged.push({ ...h, id: ref.id });
+              backfilled++;
+              continue;
+            } catch {
+              // fall through: keep display-only entry
+            }
+          }
+          merged.push(h);
+        }
+
+        return merged.sort((a, b) => {
+          const ta = a.createdAt?.toMillis?.() ?? 0;
+          const tb = b.createdAt?.toMillis?.() ?? 0;
+          return tb - ta;
+        });
       } catch (err) {
         console.error("[useUserAssets] Error:", err);
         return [];
