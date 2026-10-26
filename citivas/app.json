@@ -3,8 +3,8 @@
     "name": "Citivas",
     "slug": "citivas",
     "scheme": "citivas",
-    "version": "2.2.0",
-    "orientation": "portrait",
+    "version": "2.2.1",
+    "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "assetBundlePatterns": [
@@ -19,7 +19,7 @@
     ],
     "android": {
       "package": "com.bwtng.citivas",
-      "versionCode": 6,
+      "versionCode": 7,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#1E88E5"
@@ -29,8 +29,7 @@
         "ACCESS_FINE_LOCATION",
         "INTERNET",
         "ACCESS_NETWORK_STATE"
-      ],
-      "googleServicesFile": "./google-services.json"
+      ]
     },
     "ios": {
       "bundleIdentifier": "com.bwtng.citivas",
@@ -47,14 +46,10 @@
         "expo-build-properties",
         {
           "android": {
-            "enableProguardInReleaseBuilds": false,
-            "enableShrinkResourcesInReleaseBuilds": false,
-            "newArchEnabled": false,
+            "enableMinifyInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true,
             "kotlinVersion": "2.1.20",
             "extraMavenRepos": []
-          },
-          "ios": {
-            "newArchEnabled": false
           }
         }
       ],
@@ -72,7 +67,8 @@
         {
           "fonts": []
         }
-      ]
+      ],
+      "./plugins/withRemoveDeprecatedSystemBarColors"
     ],
     "extra": {
       "eas": {
