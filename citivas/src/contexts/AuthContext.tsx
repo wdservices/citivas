@@ -19,7 +19,12 @@ import * as WebBrowser from 'expo-web-browser';
 
 WebBrowser.maybeCompleteAuthSession();
 
-const GOOGLE_WEB_CLIENT_ID = '748964654953-k0sofgba1q6fop33epabb0a7loo10nd2.apps.googleusercontent.com';
+// Android-type OAuth client from Firebase project citivas-5489a (project
+// number 802907376648). Android clients accept the citivas:// custom-scheme
+// redirect used below; Web-type clients do not (they caused Google's
+// "Access blocked / Error 400: invalid_request" screen).
+const GOOGLE_ANDROID_CLIENT_ID =
+  '802907376648-nqonfgq5oq8mf25qpui5rt12ucf77v5i.apps.googleusercontent.com';
 
 const discovery = {
   authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
@@ -79,7 +84,7 @@ async function nativeGoogleSignIn(): Promise<string | null> {
   const redirectUri = AuthSession.makeRedirectUri({ scheme: 'citivas' });
 
   const request = new AuthSession.AuthRequest({
-    clientId: GOOGLE_WEB_CLIENT_ID,
+    clientId: GOOGLE_ANDROID_CLIENT_ID,
     scopes: ['openid', 'profile', 'email'],
     redirectUri,
     responseType: AuthSession.ResponseType.Code,
@@ -93,7 +98,7 @@ async function nativeGoogleSignIn(): Promise<string | null> {
   if (result.type === 'success' && result.params.code) {
     const tokenResult = await AuthSession.exchangeCodeAsync(
       {
-        clientId: GOOGLE_WEB_CLIENT_ID,
+        clientId: GOOGLE_ANDROID_CLIENT_ID,
         code: result.params.code,
         redirectUri,
         extraParams: {
