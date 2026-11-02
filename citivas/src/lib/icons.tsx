@@ -11,6 +11,7 @@ import AntDesign from '@expo/vector-icons/AntDesign';
 interface IconProps {
   size?: number;
   color?: string;
+  fill?: string;
   strokeWidth?: number;
   style?: StyleProp<ViewStyle>;
 }
@@ -18,32 +19,32 @@ interface IconProps {
 type IconComp = React.FC<IconProps>;
 
 const makeIon = (name: string): IconComp =>
-  ({ size = 24, color = 'black', style }: IconProps) =>
-    React.createElement(Ionicons, { name: name as any, size, color, style });
+  ({ size = 24, color = 'black', fill, style }: IconProps) =>
+    React.createElement(Ionicons, { name: name as any, size, color, fill, style });
 
 const makeFeather = (name: string): IconComp =>
-  ({ size = 24, color = 'black', style }: IconProps) =>
-    React.createElement(Feather, { name: name as any, size, color, style });
+  ({ size = 24, color = 'black', fill, style }: IconProps) =>
+    React.createElement(Feather, { name: name as any, size, color, fill, style });
 
 const makeMaterial = (name: string): IconComp =>
-  ({ size = 24, color = 'black', style }: IconProps) =>
-    React.createElement(MaterialIcons, { name: name as any, size, color, style });
+  ({ size = 24, color = 'black', fill, style }: IconProps) =>
+    React.createElement(MaterialIcons, { name: name as any, size, color, fill, style });
 
 const makeMaterialCommunity = (name: string): IconComp =>
-  ({ size = 24, color = 'black', style }: IconProps) =>
-    React.createElement(MaterialCommunityIcons, { name: name as any, size, color, style });
+  ({ size = 24, color = 'black', fill, style }: IconProps) =>
+    React.createElement(MaterialCommunityIcons, { name: name as any, size, color, fill, style });
 
 const makeFA = (name: string): IconComp =>
-  ({ size = 24, color = 'black', style }: IconProps) =>
-    React.createElement(FontAwesome, { name: name as any, size, color, style });
+  ({ size = 24, color = 'black', fill, style }: IconProps) =>
+    React.createElement(FontAwesome, { name: name as any, size, color, fill, style });
 
 const makeFA5 = (name: string): IconComp =>
-  ({ size = 24, color = 'black', style }: IconProps) =>
-    React.createElement(FontAwesome5, { name: name as any, size, color, style });
+  ({ size = 24, color = 'black', fill, style }: IconProps) =>
+    React.createElement(FontAwesome5, { name: name as any, size, color, fill, style });
 
 const makeAnt = (name: string): IconComp =>
-  ({ size = 24, color = 'black', style }: IconProps) =>
-    React.createElement(AntDesign, { name: name as any, size, color, style });
+  ({ size = 24, color = 'black', fill, style }: IconProps) =>
+    React.createElement(AntDesign, { name: name as any, size, color, fill, style });
 
 export const ArrowLeft: IconComp = makeIon('chevron-back');
 export const ChevronLeft: IconComp = makeIon('chevron-back');
@@ -99,6 +100,14 @@ export const ArrowDown: IconComp = makeFeather('arrow-down');
 export const ArrowUp: IconComp = makeFeather('arrow-up');
 export const Minus: IconComp = makeFeather('minus');
 export const Package: IconComp = makeFeather('package');
+export const Phone: IconComp = makeFeather('phone');
+export const Clock: IconComp = makeFeather('clock');
+export const Sparkles: IconComp = makeMaterialCommunity('sparkles');
+export const Share: IconComp = makeFeather('share');
+export const ShieldCheck: IconComp = makeFeather('shield-check');
+export const Check: IconComp = makeFeather('check');
+export const Truck: IconComp = makeFeather('truck');
+export const RefreshCcw: IconComp = makeFeather('refresh-ccw');
 export const Edit3 = CreditCard;
 
 export default {
@@ -110,4 +119,5 @@ export default {
   Star, Ticket, Store, Home, X, Loader2, Plus, Camera, Trash2,
   Send, Mail, Lock, Eye, EyeOff, Sun, Moon, LogOut, Shield,
   HelpCircle, CreditCard, Bell, ArrowDown, ArrowUp, Minus, Package, Edit3,
+  Phone, Clock, Sparkles, Share, ShieldCheck, Check, Truck, RefreshCcw,
 };
