@@ -86,7 +86,7 @@ export function mapBusiness(b: Record<string, unknown> & { id: string }): Explor
   };
 }
 
-const EXPLORE_CACHE_KEY = cacheKey('explore', 'all');
+const EXPLORE_CACHE_KEY = cacheKey('explore', 'all', 'v2');
 
 export function useExploreData() {
   const cached = dataCache.get<ExploreData>(EXPLORE_CACHE_KEY);
@@ -113,19 +113,28 @@ export function useExploreData() {
     setLoading(true);
     setError(null);
     try {
-      const [bizSnap, evtGroupSnap, mktGroupSnap, propGroupSnap] = await Promise.all([
-        getDocs(collection(db, 'businesses')),
-        getDocs(collectionGroup(db, 'events')).catch(() => ({ docs: [] } as any)),
-        getDocs(collectionGroup(db, 'products')).catch(() => ({ docs: [] } as any)),
-        getDocs(collectionGroup(db, 'properties')).catch(() => ({ docs: [] } as any)),
-      ]);
+      // Mirror the website's fetch strategy (src/lib/useFirestore.ts): each
+      // entity lives in BOTH business subcollections AND a legacy top-level
+      // collection. Products additionally live in `house_listings`. Reading
+      // only the collectionGroup queries left the app's marketplace empty
+      // even though the data exists in the DB.
+      const [bizSnap, evtGroupSnap, evtTopSnap, mktGroupSnap, mktTopSnap, houseSnap, propGroupSnap] =
+        await Promise.all([
+          getDocs(collection(db, 'businesses')),
+          getDocs(collectionGroup(db, 'events')).catch(() => ({ docs: [] } as any)),
+          getDocs(collection(db, 'events')).catch(() => ({ docs: [] } as any)),
+          getDocs(collectionGroup(db, 'products')).catch(() => ({ docs: [] } as any)),
+          getDocs(collection(db, 'marketplace')).catch(() => ({ docs: [] } as any)),
+          getDocs(collection(db, 'house_listings')).catch(() => ({ docs: [] } as any)),
+          getDocs(collectionGroup(db, 'properties')).catch(() => ({ docs: [] } as any)),
+        ]);
 
       const allBiz = bizSnap.docs.map((d) => mapBusiness({ id: d.id, ...d.data() }));
       const biz = allBiz.filter((b) => b.category !== 'Event' && b.category !== 'Events');
 
       const seenEvt = new Set<string>();
       const evt: (ExploreListing & { kind: 'event' })[] = [];
-      [...evtGroupSnap.docs].forEach((d) => {
+      [...evtGroupSnap.docs, ...evtTopSnap.docs].forEach((d) => {
         if (!seenEvt.has(d.id)) {
           seenEvt.add(d.id);
           evt.push({
@@ -137,7 +146,7 @@ export function useExploreData() {
 
       const seenMkt = new Set<string>();
       const mkt: (ExploreListing & { kind: 'marketplace' })[] = [];
-      [...mktGroupSnap.docs].forEach((d) => {
+      [...mktGroupSnap.docs, ...mktTopSnap.docs, ...houseSnap.docs].forEach((d) => {
         if (!seenMkt.has(d.id)) {
           seenMkt.add(d.id);
           mkt.push({
@@ -149,13 +158,17 @@ export function useExploreData() {
 
       const seenProp = new Set<string>();
       const prop: (ExploreListing & { kind: 'property' })[] = [];
-      [...propGroupSnap.docs].forEach((d) => {
-        if (!seenProp.has(d.id)) {
-          seenProp.add(d.id);
+      [...propGroupSnap.docs, ...houseSnap.docs].forEach((d) => {
+        const data = d.data();
+        // Dedupe by title+ownerId (not doc id): ProfileDashboard writes the
+        // same listing to both collections under different doc IDs.
+        const key = `${String(data.title || '').toLowerCase().trim()}|${data.ownerId || ''}`;
+        if (!seenProp.has(key)) {
+          seenProp.add(key);
           prop.push({
-            ...mapBusiness({ id: d.id, ...d.data() }),
+            ...mapBusiness({ id: d.id, ...data }),
             kind: 'property' as const,
-            category: fmt(d.data().category || d.data().type) || 'Property',
+            category: fmt(data.category || data.type) || 'Property',
           });
         }
       });
