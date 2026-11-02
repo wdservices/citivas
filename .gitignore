@@ -33,6 +33,8 @@ serviceAccountKey.json
 **/*serviceAccount*.json
 firebase-adminsdk*.json
 **/firebase-adminsdk*.json
+*firebase-adminsdk*.json
+**/*firebase-adminsdk*.json
 *-key.json
 **/*-key.json
 google-service-account.json
@@ -40,3 +42,12 @@ google-service-account.json
 .env
 .env.*
 !.env.example
+
+# Root-level secrets (not the app's citivas/app.json config)
+/app.json
+citivas-play-submit*.json
+**/citivas-play-submit*.json
+
+# Test / debug screenshots (not part of the release)
+citivas/launch-check.png
+citivas/phone-screen.png
