@@ -3,7 +3,7 @@
     "name": "Citivas",
     "slug": "citivas",
     "scheme": "citivas",
-    "version": "2.2.1",
+    "version": "2.2.2",
     "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -19,7 +19,7 @@
     ],
     "android": {
       "package": "com.bwtng.citivas",
-      "versionCode": 7,
+      "versionCode": 8,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#1E88E5"
@@ -72,10 +72,10 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "bb31c674-f685-4af0-a223-20246cfefb9e"
+        "projectId": "8f3ebcf5-6057-4900-86fa-ac2d81cf2557"
       }
     },
-    "owner": "spellz49",
+    "owner": "bluewaves_tech",
     "experiments": {
       "tsconfigPaths": true
     }
