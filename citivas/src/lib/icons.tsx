@@ -20,31 +20,31 @@ type IconComp = React.FC<IconProps>;
 
 const makeIon = (name: string): IconComp =>
   ({ size = 24, color = 'black', fill, style }: IconProps) =>
-    React.createElement(Ionicons, { name: name as any, size, color, fill, style });
+    React.createElement(Ionicons, { name: name as any, size, color, fill, style } as any);
 
 const makeFeather = (name: string): IconComp =>
   ({ size = 24, color = 'black', fill, style }: IconProps) =>
-    React.createElement(Feather, { name: name as any, size, color, fill, style });
+    React.createElement(Feather, { name: name as any, size, color, fill, style } as any);
 
 const makeMaterial = (name: string): IconComp =>
   ({ size = 24, color = 'black', fill, style }: IconProps) =>
-    React.createElement(MaterialIcons, { name: name as any, size, color, fill, style });
+    React.createElement(MaterialIcons, { name: name as any, size, color, fill, style } as any);
 
 const makeMaterialCommunity = (name: string): IconComp =>
   ({ size = 24, color = 'black', fill, style }: IconProps) =>
-    React.createElement(MaterialCommunityIcons, { name: name as any, size, color, fill, style });
+    React.createElement(MaterialCommunityIcons, { name: name as any, size, color, fill, style } as any);
 
 const makeFA = (name: string): IconComp =>
   ({ size = 24, color = 'black', fill, style }: IconProps) =>
-    React.createElement(FontAwesome, { name: name as any, size, color, fill, style });
+    React.createElement(FontAwesome, { name: name as any, size, color, fill, style } as any);
 
 const makeFA5 = (name: string): IconComp =>
   ({ size = 24, color = 'black', fill, style }: IconProps) =>
-    React.createElement(FontAwesome5, { name: name as any, size, color, fill, style });
+    React.createElement(FontAwesome5, { name: name as any, size, color, fill, style } as any);
 
 const makeAnt = (name: string): IconComp =>
   ({ size = 24, color = 'black', fill, style }: IconProps) =>
-    React.createElement(AntDesign, { name: name as any, size, color, fill, style });
+    React.createElement(AntDesign, { name: name as any, size, color, fill, style } as any);
 
 export const ArrowLeft: IconComp = makeIon('chevron-back');
 export const ChevronLeft: IconComp = makeIon('chevron-back');

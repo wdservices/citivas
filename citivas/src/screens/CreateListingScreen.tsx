@@ -4,7 +4,7 @@ import {
   ActivityIndicator, Modal, KeyboardAvoidingView, Platform, Alert, Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, Store, ShoppingBag, Home, Calendar, ChevronRight, X, Loader2, Plus, Camera } from '../lib/icons';
+import { ArrowLeft, Store, ShoppingBag, Home, Calendar, ChevronRight, X, Loader2, Plus, Trash2, Camera } from '../lib/icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../contexts/ThemeContext';
@@ -100,6 +100,9 @@ export default function CreateListingScreen() {
   const [eventEndTime, setEventEndTime] = useState('');
   const [eventState, setEventState] = useState<NigerianState | ''>('');
   const [eventCity, setEventCity] = useState('');
+  const [eventTicketTypes, setEventTicketTypes] = useState<{ name: string; price: string; quantity: string }[]>([
+    { name: 'Regular', price: '0', quantity: '100' },
+  ]);
 
   // Dropdowns
   const [showStateDropdown, setShowStateDropdown] = useState(false);
@@ -152,6 +155,13 @@ export default function CreateListingScreen() {
         setEventEndTime(editData.endTime || '');
         setEventState(editData.state || '');
         setEventCity(editData.city || '');
+        if (Array.isArray(editData.ticketTypes) && editData.ticketTypes.length > 0) {
+          setEventTicketTypes(editData.ticketTypes.map((t: any) => ({
+            name: t.name || 'Regular',
+            price: String(t.price || '0'),
+            quantity: String(t.quantity || '100'),
+          })));
+        }
       }
     }
   }, [isEdit, editData, editType]);
@@ -169,9 +179,9 @@ export default function CreateListingScreen() {
     setHotelStarRating(''); setHotelRoomTypes([]);
     setLandPlotSize(''); setLandSizeUnit('plots'); setLandTitleType('');
     setCommercialSpaceSize(''); setCommercialBillingPeriod(''); setCommercialUsages([]);
-    setEventTitle(''); setEventCategory(''); setEventVenue('');
-    setEventDescription(''); setEventStartDate(''); setEventEndDate('');
+    setEventTitle(''); setEventCategory(''); setEventVenue(''); setEventDescription(''); setEventStartDate(''); setEventEndDate('');
     setEventStartTime(''); setEventEndTime(''); setEventState(''); setEventCity('');
+    setEventTicketTypes([{ name: 'Regular', price: '0', quantity: '100' }]);
   };
 
   const canSubmit = () => {
@@ -287,6 +297,13 @@ export default function CreateListingScreen() {
           endTime: eventEndTime,
           state: eventState,
           city: eventCity,
+          ticketTypes: eventTicketTypes
+            .filter((t) => t.name.trim())
+            .map((t) => ({
+              name: t.name.trim(),
+              price: Number(t.price) || 0,
+              quantity: Number(t.quantity) || 100,
+            })),
           ownerId: user.id,
           status: 'Active',
           updatedAt: serverTimestamp(),
@@ -771,6 +788,79 @@ export default function CreateListingScreen() {
       </View>
       {renderDropdown('State *', eventState, [...NIGERIAN_STATES], (v) => { setEventState(v as NigerianState); setEventCity(''); }, showEventStateDropdown, setShowEventStateDropdown)}
       {eventState ? renderDropdown('City / Area', eventCity, eventCities, setEventCity, showEventCityDropdown, setShowEventCityDropdown) : null}
+
+      {/* Ticket Settings */}
+      <View style={[s.typeFields, { borderColor: colors.border, backgroundColor: colors.muted }]}>
+        <Text style={[s.typeFieldsTitle, { color: colors.foreground }]}>Ticket Settings</Text>
+        <View style={s.ticketHeader}>
+          <Text style={[s.ticketHeaderCell, { color: colors.mutedForeground, flex: 2 }]}>Tier Name</Text>
+          <Text style={[s.ticketHeaderCell, { color: colors.mutedForeground, flex: 1 }]}>Price (₦)</Text>
+          <Text style={[s.ticketHeaderCell, { color: colors.mutedForeground, flex: 1 }]}>Capacity</Text>
+          <Text style={[s.ticketHeaderCell, { color: colors.mutedForeground }]} />
+        </View>
+        {eventTicketTypes.map((ticket, i) => (
+          <View key={i} style={s.ticketRow}>
+            <View style={s.ticketCell}>
+              <TextInput
+                style={[s.ticketInput, { flex: 1, color: colors.foreground, backgroundColor: colors.card }]}
+                value={ticket.name}
+                onChangeText={(v) => {
+                  const copy = [...eventTicketTypes];
+                  copy[i] = { ...copy[i], name: v };
+                  setEventTicketTypes(copy);
+                }}
+                placeholder="e.g. Regular"
+                placeholderTextColor={colors.mutedForeground}
+              />
+            </View>
+            <View style={s.ticketCell}>
+              <TextInput
+                style={[s.ticketInput, { flex: 1, color: colors.foreground, backgroundColor: colors.card }]}
+                value={ticket.price}
+                onChangeText={(v) => {
+                  const copy = [...eventTicketTypes];
+                  copy[i] = { ...copy[i], price: v };
+                  setEventTicketTypes(copy);
+                }}
+                placeholder="0"
+                placeholderTextColor={colors.mutedForeground}
+                keyboardType="numeric"
+              />
+            </View>
+            <View style={s.ticketCell}>
+              <TextInput
+                style={[s.ticketInput, { flex: 1, color: colors.foreground, backgroundColor: colors.card }]}
+                value={ticket.quantity}
+                onChangeText={(v) => {
+                  const copy = [...eventTicketTypes];
+                  copy[i] = { ...copy[i], quantity: v };
+                  setEventTicketTypes(copy);
+                }}
+                placeholder="100"
+                placeholderTextColor={colors.mutedForeground}
+                keyboardType="numeric"
+              />
+            </View>
+            {eventTicketTypes.length > 1 && (
+              <TouchableOpacity
+                style={[s.ticketRemoveBtn]}
+                onPress={() => {
+                  setEventTicketTypes(eventTicketTypes.filter((_, j) => j !== i));
+                }}
+              >
+                <Trash2 size={18} color={colors.destructive} strokeWidth={2} />
+              </TouchableOpacity>
+            )}
+          </View>
+        ))}
+        <TouchableOpacity
+          style={[s.addTicketBtn, { borderColor: colors.primary, backgroundColor: 'transparent' }]}
+          onPress={() => setEventTicketTypes([...eventTicketTypes, { name: '', price: '0', quantity: '100' }])}
+        >
+          <Plus size={16} color={colors.primary} strokeWidth={2} />
+          <Text style={[s.addTicketText, { color: colors.primary }]}>Add Another Ticket Tier</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 
@@ -880,4 +970,13 @@ const s = StyleSheet.create({
   bottomBar: { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', paddingHorizontal: 16, paddingTop: 12, borderTopWidth: 1, gap: 12 },
   bottomBtn: { flex: 1, borderRadius: 14, paddingVertical: 14, alignItems: 'center', justifyContent: 'center' },
   bottomBtnText: { fontSize: 15, fontWeight: '700' },
+
+  ticketHeader: { flexDirection: 'row', gap: 8, marginBottom: 6, paddingHorizontal: 2 },
+  ticketHeaderCell: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+  ticketRow: { flexDirection: 'row', gap: 8, alignItems: 'center', marginBottom: 8, paddingHorizontal: 2 },
+  ticketCell: { flex: 1, borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 10, fontSize: 13 },
+  ticketInput: { fontSize: 13 },
+  ticketRemoveBtn: { padding: 6 },
+  addTicketBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, marginTop: 8, alignSelf: 'flex-start' },
+  addTicketText: { fontSize: 13, fontWeight: '600' },
 });
