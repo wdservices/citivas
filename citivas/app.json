@@ -3,7 +3,7 @@
     "name": "Citivas",
     "slug": "citivas",
     "scheme": "citivas",
-    "version": "2.2.2",
+    "version": "2.2.3",
     "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -19,7 +19,7 @@
     ],
     "android": {
       "package": "com.bwtng.citivas",
-      "versionCode": 8,
+      "versionCode": 9,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#1E88E5"
