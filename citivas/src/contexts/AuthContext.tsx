@@ -81,12 +81,9 @@ async function mirrorUserToFirestore(firebaseUser: FirebaseUser) {
 }
 
 async function nativeGoogleSignIn(): Promise<string | null> {
-  const redirectUri = AuthSession.makeRedirectUri({ scheme: 'citivas' });
-
   const request = new AuthSession.AuthRequest({
     clientId: GOOGLE_ANDROID_CLIENT_ID,
     scopes: ['openid', 'profile', 'email'],
-    redirectUri,
     responseType: AuthSession.ResponseType.Code,
     extraParams: {
       prompt: 'select_account',
