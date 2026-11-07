@@ -14,23 +14,24 @@ import {
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
-import * as AuthSession from 'expo-auth-session';
+import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import * as WebBrowser from 'expo-web-browser';
 
 WebBrowser.maybeCompleteAuthSession();
 
-// Android-type OAuth client from Firebase project citivas-5489a (project
-// number 802907376648). Android clients accept the citivas:// custom-scheme
-// redirect used below; Web-type clients do not (they caused Google's
-// "Access blocked / Error 400: invalid_request" screen).
-const GOOGLE_ANDROID_CLIENT_ID =
-  '802907376648-nqonfgq5oq8mf25qpui5rt12ucf77v5i.apps.googleusercontent.com';
-
-const discovery = {
-  authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
-  tokenEndpoint: 'https://oauth2.googleapis.com/token',
-  revocationEndpoint: 'https://oauth2.googleapis.com/revoke',
-};
+// Native Google sign-in goes through the Google Sign-In SDK instead of a
+// browser OAuth flow. Google now rejects custom-URI-scheme redirects for
+// Android OAuth clients ("Custom URI scheme is not enabled for your Android
+// client"), so expo-auth-session cannot complete on Android. The SDK signs in
+// against the Android OAuth client registered for package com.bwtng.citivas
+// (SHA-1 02:AD:A4:22:04:A2:A6:D1:D2:F4:50:FD:2E:9F:71:0C:88:55:F0:64)
+// automatically — no client ID needed here.
+//
+// The ID token handed to Firebase must be minted for a WEB OAuth client
+// (Firebase's signInWithIdp validates the token audience). This is the web
+// client auto-created by Firebase for project citivas-5489a.
+const GOOGLE_WEB_CLIENT_ID =
+  '802907376648-ndpcsicj3fp7b5fp25jgq3b01g53s0bt.apps.googleusercontent.com';
 
 interface User {
   id: string;
@@ -80,34 +81,24 @@ async function mirrorUserToFirestore(firebaseUser: FirebaseUser) {
   }
 }
 
+let googleSigninReady = false;
+
 async function nativeGoogleSignIn(): Promise<string | null> {
-  const request = new AuthSession.AuthRequest({
-    clientId: GOOGLE_ANDROID_CLIENT_ID,
-    scopes: ['openid', 'profile', 'email'],
-    responseType: AuthSession.ResponseType.Code,
-    extraParams: {
-      prompt: 'select_account',
-    },
-  });
-
-      const result = await request.promptAsync(discovery);
-
-  if (result.type === 'success' && result.params.code) {
-    const tokenResult = await AuthSession.exchangeCodeAsync(
-      {
-        clientId: GOOGLE_ANDROID_CLIENT_ID,
-        code: result.params.code,
-        redirectUri,
-        extraParams: {
-          code_verifier: request.codeVerifier || '',
-        },
-      },
-      discovery
-    );
-    return tokenResult.idToken;
+  if (!googleSigninReady) {
+    GoogleSignin.configure({
+      webClientId: GOOGLE_WEB_CLIENT_ID,
+      scopes: ['profile', 'email'],
+    });
+    googleSigninReady = true;
   }
 
-  return null;
+  await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+  const result = await GoogleSignin.signIn();
+
+  if (result.type !== 'success') {
+    return null;
+  }
+  return result.data.idToken;
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
