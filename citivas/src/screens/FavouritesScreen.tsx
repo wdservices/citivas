@@ -1,7 +1,8 @@
 import React, { useCallback, useState } from 'react';
 import {
-  View, Text, FlatList, TouchableOpacity, StyleSheet, Image, ActivityIndicator,
+  View, Text, FlatList, TouchableOpacity, StyleSheet, Image,
 } from 'react-native';
+import { DashboardListSkeleton } from '../components/SkeletonLoader';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Trash2, MapPin, Bookmark, ArrowLeft } from '../lib/icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -79,7 +80,9 @@ export default function FavouritesScreen() {
       </View>
 
       {loading ? (
-        <ActivityIndicator style={{ marginTop: 40 }} color={colors.primary} />
+        <View style={{ paddingHorizontal: 16, paddingTop: 14 }}>
+          <DashboardListSkeleton count={5} />
+        </View>
       ) : favourites.length === 0 ? (
         <View style={s.emptyState}>
           <Bookmark size={40} color={colors.mutedForeground} strokeWidth={1.5} />

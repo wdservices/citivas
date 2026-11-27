@@ -17,6 +17,7 @@ import { useMyPropertyBookings } from "@/lib/useFirestore";
 import { useToast } from "@/hooks/use-toast";
 import { useRegion } from "@/contexts/RegionContext";
 import StampIcon from "@/components/StampIcon";
+import { BookingsListSkeleton } from "@/components/ui/ListingSkeletons";
 
 const ProfilePage = () => {
   const navigate = useNavigate();
@@ -395,9 +396,7 @@ const ProfilePage = () => {
               </CardHeader>
               <CardContent>
                 {bookingsLoading ? (
-                  <div className="flex items-center justify-center py-12">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-                  </div>
+                  <BookingsListSkeleton count={3} />
                 ) : myBookings.length === 0 ? (
                   <div className="text-center py-12">
                     <Hotel className="h-12 w-12 mx-auto text-muted-foreground mb-4" />

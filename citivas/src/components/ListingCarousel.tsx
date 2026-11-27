@@ -7,6 +7,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { ExploreListing } from '../lib/useExploreData';
 import { getMockImage } from '../lib/mockImages';
 import { isRecentlyListed } from '../lib/formatPrice';
+import { ListingCarouselSkeleton } from './SkeletonLoader';
 
 export const LISTING_CARD_WIDTH = 156;
 const IMAGE_H = Math.round((LISTING_CARD_WIDTH * 2) / 3);
@@ -43,7 +44,7 @@ export default function ListingCarousel({
       </View>
 
       {loading ? (
-        <ActivityIndicator style={{ marginVertical: 28 }} color={colors.primary} />
+        <ListingCarouselSkeleton />
       ) : items.length === 0 ? (
         <View style={[styles.empty, { borderColor: colors.border, backgroundColor: colors.muted }]}>
           <Text style={[styles.emptyTitle, { color: colors.foreground }]}>{emptyLabel}</Text>

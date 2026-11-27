@@ -17,6 +17,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { ChatWidget } from "@/components/ChatWidget";
 import { BusinessChatInbox } from "@/components/BusinessChatInbox";
+import { DetailPageSkeleton } from "@/components/ui/ListingSkeletons";
 
 type DetailData = {
   title: string;
@@ -275,11 +276,7 @@ const DetailPage = () => {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <Loader2 className="w-10 h-10 text-primary animate-spin" />
-      </div>
-    );
+    return <DetailPageSkeleton />;
   }
 
   if (!data) {

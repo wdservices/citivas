@@ -14,6 +14,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { dataCache, cacheKey } from '../lib/cache';
+import { WalletTransactionsSkeleton } from '../components/SkeletonLoader';
 
 interface Transaction {
   id: string;
@@ -273,7 +274,7 @@ export default function WalletScreen() {
         <Text style={[s.sectionTitle, { color: colors.foreground }]}>Recent Transactions</Text>
 
         {loading ? (
-          <ActivityIndicator style={{ marginTop: 20 }} color={colors.primary} />
+          <WalletTransactionsSkeleton count={4} />
         ) : transactions.length === 0 ? (
           <View style={[s.emptyState, { borderColor: colors.border, backgroundColor: colors.muted }]}>
             <Text style={[s.emptyTitle, { color: colors.foreground }]}>No transactions yet</Text>

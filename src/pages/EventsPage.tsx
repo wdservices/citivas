@@ -11,6 +11,7 @@ import SEO from "@/components/SEO";
 import EventDetailModal from '../components/EventDetailModal';
 import { getMockImage } from '@/lib/mockImages';
 import { useEvents, fmt } from '@/lib/useFirestore';
+import { EventGridSkeleton } from '@/components/ui/ListingSkeletons';
 
 interface Event {
   id: string;
@@ -173,7 +174,7 @@ const EventsPage = () => {
         </motion.div>
 
         {isLoading ? (
-          <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 text-primary animate-spin" /></div>
+          <EventGridSkeleton count={6} />
         ) : filteredEvents.length === 0 ? (
           <div className="text-center py-16 bg-card/40 rounded-3xl border border-dashed border-border/70 max-w-lg mx-auto p-8">
             <Calendar className="w-12 h-12 mx-auto text-muted-foreground/40 mb-3" />

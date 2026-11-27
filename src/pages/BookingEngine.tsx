@@ -4,6 +4,7 @@ import { db } from "@/lib/firebase";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { format, addMonths, startOfMonth, getDaysInMonth, getDay, isSameDay, isAfter, isBefore, addDays } from "date-fns";
 import { ChevronLeft, Users, Wifi, Maximize2, CheckCircle2, ArrowRight } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface RoomCategory {
   name: string;
@@ -147,7 +148,41 @@ export default function BookingEngine() {
   const total = roomTotal + vatAmount;
 
   if (loading) {
-    return <div className="min-h-screen bg-[#f8f9ff] flex items-center justify-center"><p className="text-gray-400">Loading...</p></div>;
+    return (
+      <div className="min-h-screen bg-[#f8f9ff] flex flex-col">
+        <div className="bg-white w-full border-b border-gray-200 h-14 sm:h-20 flex items-center px-4 sm:px-6 lg:px-10">
+          <div className="max-w-[1440px] mx-auto w-full flex justify-between items-center">
+            <Skeleton className="h-6 w-44" />
+            <Skeleton className="h-9 w-24 rounded-lg" />
+          </div>
+        </div>
+        <main className="flex-1 w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-10 py-6 sm:py-8">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <div className="lg:col-span-5 bg-white rounded-xl border border-gray-200 p-6 space-y-4">
+              <Skeleton className="h-6 w-36 mx-auto" />
+              <Skeleton className="h-64 w-full rounded-lg" />
+              <Skeleton className="h-16 w-full rounded-lg" />
+            </div>
+            <div className="lg:col-span-7 flex flex-col gap-5">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="bg-white rounded-xl border border-gray-200 overflow-hidden flex flex-col sm:flex-row">
+                  <Skeleton className="w-full sm:w-1/3 h-48 rounded-none" />
+                  <div className="w-full sm:w-2/3 p-6 space-y-3">
+                    <Skeleton className="h-6 w-2/3" />
+                    <Skeleton className="h-4 w-1/2" />
+                    <Skeleton className="h-4 w-1/3" />
+                    <div className="pt-4 flex justify-between items-center border-t border-gray-100">
+                      <Skeleton className="h-8 w-28" />
+                      <Skeleton className="h-10 w-32 rounded-lg" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </main>
+      </div>
+    );
   }
 
   if (!property) {

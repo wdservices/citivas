@@ -6,6 +6,7 @@ import { normalizeBusinessDoc, normalizeListingDoc } from "@/lib/normalizeBusine
 import SearchHeader from "@/components/SearchHeader";
 import ListingCard from "@/components/ListingCard";
 import MiniSiteStrip from "@/components/MiniSiteStrip";
+import { ListingGridSkeleton } from "@/components/ui/ListingSkeletons";
 
 interface Hotel {
   id: string;
@@ -116,7 +117,7 @@ const HotelsPage = () => {
       />
       
       <div className="px-4 py-6">
-        {loading && <p className="text-center">Loading hotels...</p>}
+        {loading && <ListingGridSkeleton count={6} />}
         {error && <p className="text-center text-destructive">{error}</p>}
         {!loading && !error && (
           <>

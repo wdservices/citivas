@@ -6,6 +6,7 @@ import { normalizeBusinessDoc } from "@/lib/normalizeBusiness";
 import SearchHeader from "@/components/SearchHeader";
 import SEO from "@/components/SEO";
 import ListingCard from "@/components/ListingCard";
+import { ListingGridSkeleton } from "@/components/ui/ListingSkeletons";
 
 interface OtherItem {
   id: string;
@@ -73,7 +74,7 @@ const OthersPage = () => {
         placeholder="Search others..."
       />
       <div className="px-4 py-6">
-        {loading && <p className="text-center">Loading...</p>}
+        {loading && <ListingGridSkeleton count={6} />}
         {error && <p className="text-center text-red-500">{error}</p>}
         {!loading && !error && (
           <>

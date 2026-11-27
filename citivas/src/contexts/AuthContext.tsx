@@ -43,6 +43,7 @@ interface User {
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
+  isAdmin: boolean;
   isLoading: boolean;
   loginWithEmail: (email: string, password: string) => Promise<void>;
   signUpWithEmailPassword: (email: string, password: string) => Promise<void>;
@@ -81,6 +82,17 @@ async function mirrorUserToFirestore(firebaseUser: FirebaseUser) {
   }
 }
 
+async function checkIsAdminUser(uid: string): Promise<boolean> {
+  try {
+    const snap = await getDoc(doc(db, 'admin_users', uid));
+    if (!snap.exists()) return false;
+    const role = snap.data()?.role;
+    return role === 'admin' || role === 'super_admin';
+  } catch {
+    return false;
+  }
+}
+
 let googleSigninReady = false;
 
 async function nativeGoogleSignIn(): Promise<string | null> {
@@ -103,13 +115,21 @@ async function nativeGoogleSignIn(): Promise<string | null> {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      setUser(firebaseUser ? mapFirebaseUser(firebaseUser) : null);
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        setUser(mapFirebaseUser(firebaseUser));
+        mirrorUserToFirestore(firebaseUser);
+        const admin = await checkIsAdminUser(firebaseUser.uid);
+        setIsAdmin(admin);
+      } else {
+        setUser(null);
+        setIsAdmin(false);
+      }
       setIsLoading(false);
-      if (firebaseUser) mirrorUserToFirestore(firebaseUser);
     });
     return unsubscribe;
   }, []);
@@ -149,6 +169,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       value={{
         user,
         isAuthenticated: !!user,
+        isAdmin,
         isLoading,
         loginWithEmail,
         signUpWithEmailPassword,

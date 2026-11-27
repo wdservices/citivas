@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, ActivityIndicator } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 
+import OnboardingScreen, { ONBOARDING_SEEN_KEY } from '../screens/OnboardingScreen';
 import LoginScreen from '../screens/LoginScreen';
 import HomeScreen from '../screens/HomeScreen';
 import BusinessDetailScreen from '../screens/BusinessDetailScreen';
@@ -23,6 +25,7 @@ import BusinessesScreen from '../screens/BusinessesScreen';
 import PropertyDetailScreen from '../screens/PropertyDetailScreen';
 import BookingScreen from '../screens/BookingScreen';
 import PaymentScreen from '../screens/PaymentScreen';
+import AdminAnalyticsScreen from '../screens/AdminAnalyticsScreen';
 
 import MainTabsContent from './MainTabsContent';
 
@@ -107,8 +110,28 @@ function MainTabs() {
 export default function RootNavigator() {
   const { isAuthenticated, isLoading } = useAuth();
   const { colors } = useTheme();
+  const [onboardingChecked, setOnboardingChecked] = useState(false);
+  const [hasSeenOnboarding, setHasSeenOnboarding] = useState(false);
 
-  if (isLoading) {
+  useEffect(() => {
+    let active = true;
+    AsyncStorage.getItem(ONBOARDING_SEEN_KEY)
+      .then((val) => {
+        if (!active) return;
+        setHasSeenOnboarding(val === 'true');
+        setOnboardingChecked(true);
+      })
+      .catch(() => {
+        if (!active) return;
+        setHasSeenOnboarding(false);
+        setOnboardingChecked(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [isAuthenticated]);
+
+  if (isLoading || !onboardingChecked) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }}>
         <ActivityIndicator size="large" color={colors.primary} />
@@ -118,7 +141,10 @@ export default function RootNavigator() {
 
   return (
     <NavigationContainer>
-      <RootStack.Navigator screenOptions={{ headerShown: false }}>
+      <RootStack.Navigator
+        initialRouteName={isAuthenticated ? 'MainTabs' : hasSeenOnboarding ? 'Login' : 'Onboarding'}
+        screenOptions={{ headerShown: false }}
+      >
         {isAuthenticated ? (
           <>
             <RootStack.Screen name="MainTabs" component={MainTabs} />
@@ -132,9 +158,13 @@ export default function RootNavigator() {
             <RootStack.Screen name="Booking" component={BookingScreen} />
             <RootStack.Screen name="Payment" component={PaymentScreen} />
             <RootStack.Screen name="Favourites" component={FavouritesScreen} />
+            <RootStack.Screen name="AdminAnalytics" component={AdminAnalyticsScreen} />
           </>
         ) : (
-          <RootStack.Screen name="Login" component={LoginScreen} />
+          <>
+            <RootStack.Screen name="Onboarding" component={OnboardingScreen} />
+            <RootStack.Screen name="Login" component={LoginScreen} />
+          </>
         )}
       </RootStack.Navigator>
     </NavigationContainer>

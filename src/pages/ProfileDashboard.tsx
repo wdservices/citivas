@@ -1,14 +1,14 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft, Building2, ShoppingBag, Home, Calendar, Megaphone,
-  Plus, LayoutDashboard, MapPin, Trash2, Edit3, Ticket, Store,
-  ChevronRight, Loader2, Download, FileText, BarChart2, Info, CalendarClock, Image as ImageIcon, Hotel, UtensilsCrossed, Sparkles
+  Plus, LayoutDashboard, MapPin, Trash2, Edit3, Ticket,
+  ChevronRight, Loader2, FileText, Info, CalendarClock, Image as ImageIcon, Hotel, UtensilsCrossed
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,23 +16,20 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/AuthContext";
-import { useRegion } from "@/contexts/RegionContext";
 import { useToast } from "@/hooks/use-toast";
 import { db } from "@/lib/firebase";
-import { getDoc, doc, addDoc, collection, serverTimestamp } from "firebase/firestore";
-import { useMyListings, useBusinessChildren, useCreateDoc, useUpdateDoc, useDeleteDoc, useMyEventOrders, useMyTicketOrders, useMyAttendedEvents, fmt } from "@/lib/useFirestore";
+import { getDoc, doc } from "firebase/firestore";
+import { useMyListings, useBusinessChildren, useUpdateDoc, useDeleteDoc, useMyEventOrders, useMyTicketOrders, useMyAttendedEvents } from "@/lib/useFirestore";
 import ImageUpload from "@/components/ImageUpload";
-import MultiImageUpload from "@/components/MultiImageUpload";
 import { AddressPicker } from "@/components/AddressPicker";
+import { CreateListingWizard } from "@/components/CreateListingWizard";
+import { type ListingKind } from "@/lib/listingSchema";
 import { CLOUDINARY_FOLDERS, deleteImagesFromCloudinary, collectPublicIdsForListing } from "@/lib/cloudinary";
 import { logActivity } from "@/lib/activityLog";
 import { getMockImage } from "@/lib/mockImages";
 import {
   NIGERIAN_STATES, STATE_CITIES, BUSINESS_CATEGORIES,
   PROPERTY_TYPES, EVENT_CATEGORIES, type NigerianState,
-  PROPERTY_SUB_TYPES, PROPERTY_AMENITIES, RENT_BILLING_PERIODS,
-  FURNISHING_OPTIONS, LAND_TITLE_TYPES, LAND_SIZE_UNITS,
-  COMMERCIAL_USAGES, type PropertySubType,
 } from "@/lib/nigerianStates";
 
 interface ListingItem {
@@ -51,26 +48,22 @@ const ProfileDashboard = () => {
   const [searchParams] = useSearchParams();
   const { user } = useAuth();
   const { toast } = useToast();
-  const qc = useQueryClient();
-  const {
-    state: detectedRegionState,
-    locationName: detectedCity,
-    userCoords,
-    userAddress,
-    isLocating,
-    detectRegion,
-  } = useRegion();
 
   const initialTab = searchParams.get("tab") || "overview";
   const [activeTab, setActiveTab] = useState(initialTab);
   const [selectedBusinessId, setSelectedBusinessId] = useState<string | null>(null);
   const [selectedBusinessTitle, setSelectedBusinessTitle] = useState<string | null>(null);
 
-  // Wizard state
+  // Centralized Create Listing Wizard state
   const [createOpen, setCreateOpen] = useState(searchParams.get("action") === "create");
-  const [wizardStep, setWizardStep] = useState(1);
-  const [listingType, setListingType] = useState<"business" | "product" | "property" | "event" | "restaurant">("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [wizardDefaultType, setWizardDefaultType] = useState<ListingKind | "">("");
+  const [wizardDefaultBusinessId, setWizardDefaultBusinessId] = useState<string>("individual");
+
+  const openCreateWizard = (type: ListingKind | "" = "", businessId: string = "individual") => {
+    setWizardDefaultType(type);
+    setWizardDefaultBusinessId(businessId);
+    setCreateOpen(true);
+  };
 
   useEffect(() => {
     const action = searchParams.get("action");
@@ -81,30 +74,16 @@ const ProfileDashboard = () => {
       setActiveTab(tab);
     }
 
-    if (type === "restaurant") {
-      navigate("/restaurant-wizard", { replace: true });
-      return;
-    }
-
     if (action === "create") {
-      setCreateOpen(true);
-      if (type === "product") {
-        setListingType("product");
-        setWizardStep(2);
-      } else if (type === "event" || tab === "events") {
-        setListingType("event");
-        setWizardStep(2);
-      } else if (type === "property") {
-        setListingType("property");
-        setWizardStep(2);
-      } else if (type === "business") {
-        setListingType("business");
-        setWizardStep(2);
+      if (type === "product" || type === "property" || type === "restaurant" || type === "event" || type === "business") {
+        openCreateWizard(type);
+      } else if (tab === "events") {
+        openCreateWizard("event");
       } else {
-        setWizardStep(1);
+        openCreateWizard("");
       }
     }
-  }, [searchParams, navigate]);
+  }, [searchParams]);
 
   // ── Delete confirmation ──
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; type: string; title: string } | null>(null);
@@ -144,112 +123,6 @@ const ProfileDashboard = () => {
   const [editEventLocation, setEditEventLocation] = useState("");
   const [editTicketTypes, setEditTicketTypes] = useState<{ name: string; price: string; quantity: string }[]>([]);
 
-  // ── Shared form fields ──
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [selectedState, setSelectedState] = useState<NigerianState | "">("");
-  const [selectedCity, setSelectedCity] = useState("");
-  const [streetAddress, setStreetAddress] = useState("");
-  const [phone, setPhone] = useState("");
-  const [uploadedImageUrl, setUploadedImageUrl] = useState("");
-  const [uploadedImagePublicId, setUploadedImagePublicId] = useState("");
-  const [mapLat, setMapLat] = useState<number | undefined>();
-  const [mapLon, setMapLon] = useState<number | undefined>();
-
-  // ── Business-specific ──
-  const [bizCategory, setBizCategory] = useState("");
-  const [bizImages, setBizImages] = useState<string[]>([]);
-  const [bizImagePublicIds, setBizImagePublicIds] = useState<string[]>([]);
-
-  // ── Restaurant-specific ──
-  const [cuisineType, setCuisineType] = useState("");
-  const [priceRange, setPriceRange] = useState("₦₦ (Casual Dining)");
-
-  // ── Product-specific ──
-  const [listAsBizId, setListAsBizId] = useState("individual");
-  const [productPrice, setProductPrice] = useState("");
-  const [promoPrice, setPromoPrice] = useState("");
-  const [productCategory, setProductCategory] = useState("");
-  const [itemCondition, setItemCondition] = useState("Brand New");
-  const [productImages, setProductImages] = useState<string[]>([]);
-  const [productImagePublicIds, setProductImagePublicIds] = useState<string[]>([]);
-
-  // ── Property-specific ──
-  const [propListAsBizId, setPropListAsBizId] = useState("individual");
-  const [propertySubType, setPropertySubType] = useState<PropertySubType | "">("");
-  const [propertyType, setPropertyType] = useState("");
-  const [propertyPrice, setPropertyPrice] = useState("");
-  const [selectedAmenities, setSelectedAmenities] = useState<string[]>([]);
-  const [uploadedImageUrls, setUploadedImageUrls] = useState<string[]>([]);
-  const [uploadedImagePublicIds, setUploadedImagePublicIds] = useState<string[]>([]);
-  // Rent fields
-  const [rentHouseType, setRentHouseType] = useState("");
-  const [rentRoadCondition, setRentRoadCondition] = useState("");
-  const [rentRoadImage, setRentRoadImage] = useState("");
-  const [rentRoadImagePublicId, setRentRoadImagePublicId] = useState("");
-  const [rentBillingPeriod, setRentBillingPeriod] = useState("");
-  const [rentBedrooms, setRentBedrooms] = useState(2);
-  const [rentBathrooms, setRentBathrooms] = useState(2);
-  const [rentHasStore, setRentHasStore] = useState(false);
-  const [rentFurnishing, setRentFurnishing] = useState("");
-  const [rentServiceCharge, setRentServiceCharge] = useState("");
-  const [rentCautionFee, setRentCautionFee] = useState("");
-  const [rentLegalFee, setRentLegalFee] = useState("");
-  const [rentAgencyFee, setRentAgencyFee] = useState("");
-  const [rentDeposit, setRentDeposit] = useState(""); // legacy alias for caution
-  const [rentAvailableFrom, setRentAvailableFrom] = useState("");
-  // Shortlet fields
-  const [shortletMinNights, setShortletMinNights] = useState(1);
-  const [shortletMaxGuests, setShortletMaxGuests] = useState(2);
-  const [shortletBedrooms, setShortletBedrooms] = useState(1);
-  const [shortletBathrooms, setShortletBathrooms] = useState(1);
-  const [shortletCheckin, setShortletCheckin] = useState("14:00");
-  const [shortletCheckout, setShortletCheckout] = useState("11:00");
-  // Hotel fields
-  const [hotelStarRating, setHotelStarRating] = useState("");
-  const [hotelRoomTypes, setHotelRoomTypes] = useState<{ name: string; pricePerNight: number; maxOccupancy: number; amenities: string[] }[]>([]);
-  const [hotelCheckin, setHotelCheckin] = useState("14:00");
-  const [hotelCheckout, setHotelCheckout] = useState("11:00");
-  // Land fields
-  const [landPlotSize, setLandPlotSize] = useState("");
-  const [landSizeUnit, setLandSizeUnit] = useState("plots");
-  const [landTitleType, setLandTitleType] = useState("");
-  const [landUseType, setLandUseType] = useState("");
-  const [landTopography, setLandTopography] = useState("");
-  const [landAccessRoad, setLandAccessRoad] = useState("");
-  const [landFenced, setLandFenced] = useState(false);
-  const [landSurveyPlan, setLandSurveyPlan] = useState(false);
-  const [landSaleType, setLandSaleType] = useState("sale");
-  // Commercial fields
-  const [commercialType, setCommercialType] = useState("");
-  const [commercialSpaceSize, setCommercialSpaceSize] = useState("");
-  const [commercialCapacity, setCommercialCapacity] = useState("");
-  const [commercialBillingPeriod, setCommercialBillingPeriod] = useState("");
-  const [commercialUsages, setCommercialUsages] = useState<string[]>([]);
-  const [commercialHasParking, setCommercialHasParking] = useState(false);
-  const [commercialHasSecurity, setCommercialHasSecurity] = useState(false);
-  const [commercialHasWater, setCommercialHasWater] = useState(false);
-  const [commercialHasPower, setCommercialHasPower] = useState(false);
-  const [commercialHasAC, setCommercialHasAC] = useState(false);
-  const [commercialHasInternet, setCommercialHasInternet] = useState(false);
-  const [commercialHasElevator, setCommercialHasElevator] = useState(false);
-  const [commercialHasCanteen, setCommercialHasCanteen] = useState(false);
-  const [commercialServiceCharge, setCommercialServiceCharge] = useState("");
-  const [commercialCautionFee, setCommercialCautionFee] = useState("");
-  const [commercialLegalFee, setCommercialLegalFee] = useState("");
-  const [commercialAgencyFee, setCommercialAgencyFee] = useState("");
-
-  // ── Event-specific ──
-  const [eventStartDate, setEventStartDate] = useState("");
-  const [eventEndDate, setEventEndDate] = useState("");
-  const [eventStartTime, setEventStartTime] = useState("");
-  const [eventEndTime, setEventEndTime] = useState("");
-  const [eventVenue, setEventVenue] = useState("");
-  const [eventLocation, setEventLocation] = useState("");
-  const [eventCategory, setEventCategory] = useState("");
-  const [ticketTypes, setTicketTypes] = useState<{ name: string; price: string; quantity: string }[]>([
-    { name: "Regular", price: "0", quantity: "100" },
-  ]);
 
   // ── User's businesses (for product/property linking) ──
   const { data: listingsData, isLoading: loadingListings } = useMyListings(user?.id || null);
@@ -340,10 +213,6 @@ const ProfileDashboard = () => {
   };
 
   // ── Cached mutations (auto-invalidate queries on success) ──
-  const createBusiness = useCreateDoc("businesses");
-  const createEvent = useCreateDoc("events");
-  const createProduct = useCreateDoc("marketplace");
-  const createProperty = useCreateDoc("house_listings");
   const updateListing = useUpdateDoc("businesses");
   const updateProduct = useUpdateDoc("marketplace");
   const updateProperty = useUpdateDoc("house_listings");
@@ -353,569 +222,6 @@ const ProfileDashboard = () => {
   const deleteProperty = useDeleteDoc("house_listings");
   const deleteEvent = useDeleteDoc("events");
   const deleteTicketOrder = useDeleteDoc("ticket_orders");
-
-  // ── Inherited state from selected business ──
-  const selectedBiz = myBusinesses.find((b) => b.id === listAsBizId);
-  const selectedPropBiz = myBusinesses.find((b) => b.id === propListAsBizId);
-  const inheritState = selectedBiz?.location?.split(", ").pop() || "";
-  const inheritPropState = selectedPropBiz?.location?.split(", ").pop() || "";
-
-  // Maps RegionContext state names (Rivers, Lagos, FCT, Imo, Kano, Kaduna)
-  // to canonical NIGERIAN_STATES keys; handles the "FCT" -> "FCT (Abuja)" alias.
-  const resolveNigerianStateFromRegion = (regionState: string): NigerianState | "" => {
-    if (regionState === "FCT") return "FCT (Abuja)" as NigerianState;
-    if ((NIGERIAN_STATES as readonly string[]).includes(regionState)) {
-      return regionState as NigerianState;
-    }
-    return "";
-  };
-
-  // Auto-populate wizard location fields with the user's detected GIS region.
-  // Called by resetWizard() and a useEffect that fires when the dialog opens.
-  const applyDetectedRegionDefaults = () => {
-    const defaultState = resolveNigerianStateFromRegion(detectedRegionState);
-    if (defaultState) {
-      setSelectedState(defaultState);
-    }
-    // Default city: RegionContext locationName (e.g. "Port Harcourt")
-    // - only if that city is actually in the defaultState's city list
-    if (defaultState && detectedCity) {
-      const cities = STATE_CITIES[defaultState] || [];
-      if (cities.includes(detectedCity)) {
-        setSelectedCity(detectedCity);
-      } else if (cities.length > 0) {
-        setSelectedCity(cities[0]);
-      } else {
-        setSelectedCity("");
-      }
-    }
-    // GIS coordinates
-    if (userCoords?.lat !== undefined) setMapLat(userCoords.lat);
-    if (userCoords?.lon !== undefined) setMapLon(userCoords.lon);
-    // Reverse-geocoded street address, if available
-    if (userAddress) setStreetAddress(userAddress);
-  };
-
-  // Auto-populate location defaults whenever the Create New dialog opens.
-  // Also re-triggers if detectRegion finishes resolving (isLocating flips from true -> false).
-  useEffect(() => {
-    if (!createOpen) return;
-    // Only auto-fill if the user hasn't already touched these fields manually in this session.
-    if (!selectedState || !mapLat) {
-      applyDetectedRegionDefaults();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [createOpen, isLocating]);
-
-  const resetWizard = () => {
-    setCreateOpen(false);
-    setWizardStep(1);
-    setListingType("");
-    setTitle("");
-    setDescription("");
-    setSelectedCity("");
-    setStreetAddress("");
-    setPhone("");
-    setUploadedImageUrl("");
-    setUploadedImagePublicId("");
-    setBizCategory("");
-    setCuisineType("");
-    setPriceRange("₦₦ (Casual Dining)");
-    setListAsBizId("individual");
-    setProductPrice("");
-    setPromoPrice("");
-    setProductCategory("");
-    setItemCondition("Brand New");
-    setProductImages([]);
-    setProductImagePublicIds([]);
-    setPropListAsBizId("individual");
-    setPropertyType("");
-    setPropertyPrice("");
-    setPropertySubType("" as any);
-    setSelectedAmenities([]);
-    setUploadedImageUrls([]);
-    setUploadedImagePublicIds([]);
-    setRentHouseType("");
-    setRentRoadCondition("");
-    setRentRoadImage("");
-    setRentRoadImagePublicId("");
-    setRentBillingPeriod("");
-    setRentBedrooms(1);
-    setRentBathrooms(1);
-    setRentHasStore(false);
-    setRentFurnishing("");
-    setRentServiceCharge("");
-    setRentCautionFee("");
-    setRentLegalFee("");
-    setRentAgencyFee("");
-    setRentDeposit("");
-    setRentAvailableFrom("");
-    setLandPlotSize("");
-    setLandSizeUnit("plots");
-    setLandTitleType("");
-    setLandSaleType("sale");
-    setCommercialSpaceSize("");
-    setCommercialBillingPeriod("");
-    setCommercialUsages([]);
-    setCommercialHasParking(false);
-    setCommercialHasSecurity(false);
-    setCommercialHasWater(false);
-    setCommercialHasPower(false);
-    setCommercialHasAC(false);
-    setCommercialHasInternet(false);
-    setCommercialHasElevator(false);
-    setCommercialHasCanteen(false);
-    setBizImages([]);
-    setBizImagePublicIds([]);
-    setEventStartDate("");
-    setEventEndDate("");
-    setEventStartTime("");
-    setEventEndTime("");
-    setEventVenue("");
-    setEventLocation("");
-    setEventCategory("");
-    setTicketTypes([{ name: "Regular", price: "0", quantity: "100" }]);
-    // Reset location to detected defaults, not to empty — so every fresh
-    // open of Create New already shows the user's detected GIS state/city.
-    applyDetectedRegionDefaults();
-  };
-
-  const resolveState = (override?: string): string => {
-    if (override) return override;
-    return selectedState;
-  };
-
-  // ── CREATE HANDLERS ──
-
-  const handleCreateBusiness = async () => {
-    if (!user?.id) { navigate("/auth"); return; }
-    if (!title || !selectedState || !bizCategory) {
-      toast({ title: "Please fill all required fields", variant: "destructive" });
-      return;
-    }
-    setIsSubmitting(true);
-    try {
-      const fullLocation = [selectedCity, selectedState].filter(Boolean).join(", ");
-      const primaryBizImage = bizImages[0] || uploadedImageUrl || getMockImage(bizCategory);
-      await createBusiness.mutateAsync({
-        title,
-        description,
-        category: bizCategory,
-        location: fullLocation,
-        state: selectedState,
-        city: selectedCity,
-        streetAddress,
-        phone,
-        image: primaryBizImage,
-        images: bizImages.length > 0 ? bizImages : [primaryBizImage],
-        imagePublicIds: bizImagePublicIds,
-        ownerId: user.id,
-        isOpen: true,
-        rating: 0,
-        lat: mapLat || null,
-        lon: mapLon || null,
-      });
-      logActivity({ userId: user.id, userEmail: user.email, userName: user.name, action: "create_listing", targetType: "business", targetName: title, details: `Created business: ${title}` });
-      toast({ title: "Business registered!" });
-      resetWizard();
-    } catch (err) {
-      console.error(err);
-      toast({ title: "Failed to create business", variant: "destructive" });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleCreateRestaurant = async () => {
-    if (!user?.id) { navigate("/auth"); return; }
-    if (!title || !selectedState) {
-      toast({ title: "Please provide restaurant name and state", variant: "destructive" });
-      return;
-    }
-    setIsSubmitting(true);
-    try {
-      const fullLocation = [selectedCity, selectedState, "Nigeria"].filter(Boolean).join(", ");
-      const primaryImage = bizImages[0] || uploadedImageUrl || getMockImage("Restaurant");
-      const newDoc = await createBusiness.mutateAsync({
-        title: title.trim(),
-        description: description.trim(),
-        category: "Restaurant",
-        type: "Restaurant",
-        cuisine: cuisineType || "Nigerian / Local Delicacies",
-        priceTier: priceRange.split(" ")[0] || "₦₦",
-        phone: phone.trim(),
-        streetAddress: streetAddress.trim(),
-        location: fullLocation,
-        state: selectedState,
-        city: selectedCity,
-        image: primaryImage,
-        images: bizImages.length > 0 ? bizImages : [primaryImage],
-        imagePublicIds: bizImagePublicIds,
-        ownerId: user.id,
-        isOpen: true,
-        rating: 0,
-        reviewCount: 0,
-        lat: mapLat || null,
-        lon: mapLon || null,
-        miniSiteActive: true,
-      });
-      logActivity({
-        userId: user.id,
-        userEmail: user.email,
-        userName: user.name,
-        action: "create_listing",
-        targetType: "business",
-        targetName: title,
-        details: `Created restaurant: ${title}`,
-      });
-      toast({
-        title: "Restaurant registered!",
-        description: "Launching Restaurant Wizard to customize your digital menu & dining options...",
-      });
-      resetWizard();
-      if (newDoc?.id) {
-        navigate(`/restaurant-wizard?businessId=${newDoc.id}`);
-      } else {
-        navigate("/restaurant-wizard");
-      }
-    } catch (err: any) {
-      console.error(err);
-      toast({ title: "Failed to create restaurant", description: err?.message, variant: "destructive" });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleCreateProduct = async () => {
-    if (!user?.id) { navigate("/auth"); return; }
-    if (!title.trim()) {
-      toast({ title: "Please enter a product title", variant: "destructive" });
-      return;
-    }
-    if (!productPrice) {
-      toast({ title: "Please enter product price", variant: "destructive" });
-      return;
-    }
-
-    const isBiz = listAsBizId && listAsBizId !== "individual";
-    const chosenState = (isBiz && selectedBiz && inheritState ? inheritState : selectedState) || selectedBiz?.state || selectedState;
-    const chosenCity = (isBiz && selectedBiz && inheritState ? (selectedBiz.location?.split(", ").shift() || selectedBiz.city || "") : selectedCity) || selectedCity;
-
-    if (!chosenState) {
-      toast({ title: "Please select a state for your product listing", variant: "destructive" });
-      return;
-    }
-
-    setIsSubmitting(true);
-    try {
-      const fullLocation = [streetAddress, chosenCity, chosenState].filter(Boolean).join(", ") || (selectedBiz?.location) || `${chosenState}, Nigeria`;
-      const primaryImage = productImages[0] || uploadedImageUrl || getMockImage(productCategory || "Product");
-      const cleanNumPrice = Number(productPrice.toString().replace(/[^0-9.]/g, '')) || 0;
-      const cleanPromoPrice = promoPrice ? Number(promoPrice.toString().replace(/[^0-9.]/g, '')) : null;
-
-      await createProduct.mutateAsync({
-        title: title.trim(),
-        description: description.trim(),
-        category: productCategory || "Other",
-        price: `₦${cleanNumPrice.toLocaleString()}`,
-        rawPrice: cleanNumPrice,
-        promoPrice: cleanPromoPrice ? `₦${cleanPromoPrice.toLocaleString()}` : "",
-        rawPromoPrice: cleanPromoPrice,
-        regularPrice: cleanNumPrice,
-        location: fullLocation,
-        streetAddress: streetAddress.trim(),
-        state: chosenState,
-        city: chosenCity,
-        businessId: isBiz ? listAsBizId : "individual",
-        businessName: isBiz && selectedBiz ? selectedBiz.title : (user.name || "Independent Seller"),
-        sellerType: isBiz ? "business" : "individual",
-        image: primaryImage,
-        images: productImages.length > 0 ? productImages : [primaryImage],
-        imagePublicIds: productImagePublicIds,
-        ownerId: user.id,
-        condition: itemCondition || "Brand New",
-        phone: phone.trim() || user.phone || "",
-        rating: 5.0,
-        status: "Active",
-      });
-
-      qc.invalidateQueries({ queryKey: ["myListings"] });
-      qc.invalidateQueries({ queryKey: ["marketplace"] });
-      qc.invalidateQueries({ queryKey: ["products"] });
-
-      logActivity({
-        userId: user.id,
-        userEmail: user.email,
-        userName: user.name,
-        action: "create_listing",
-        targetType: "product",
-        targetName: title,
-        details: `Created product: ${title}`,
-      });
-      toast({ title: "Product listed on Marketplace!" });
-      resetWizard();
-    } catch (err: any) {
-      console.error(err);
-      toast({ title: "Failed to list product", description: err?.message, variant: "destructive" });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleCreateProperty = async () => {
-    if (!user?.id) { navigate("/auth"); return; }
-    if (!title || !propertySubType) {
-      toast({ title: "Please enter a property title and select a property type", variant: "destructive" });
-      return;
-    }
-    const isIndividual = propListAsBizId === "individual" || !propListAsBizId;
-    if (!isIndividual && !selectedPropBiz) {
-      toast({ title: "Selected business not found", variant: "destructive" });
-      return;
-    }
-    setIsSubmitting(true);
-    try {
-      let state: string = "";
-      let city: string = "";
-      if (selectedState) {
-        state = selectedState;
-        city = selectedCity;
-      } else if (selectedPropBiz?.location) {
-        state = selectedPropBiz.location?.split(", ").pop() || "";
-        city = selectedPropBiz.location?.split(", ").shift() || "";
-      }
-      const fullLocation = [streetAddress, city, state].filter(Boolean).join(", ");
-      const primaryImage = uploadedImageUrls[0] || uploadedImageUrl || getMockImage("Airbnb");
-
-      const details: Record<string, any> = {};
-      if (propertySubType === "rent") {
-        details.houseType = rentHouseType;
-        details.propertyType = rentHouseType;
-        details.roadCondition = rentRoadCondition;
-        details.roadImage = rentRoadImage;
-        details.roadImagePublicId = rentRoadImagePublicId;
-        details.billingPeriod = rentBillingPeriod;
-        details.paymentPlan = rentBillingPeriod;
-        details.bedrooms = rentBedrooms;
-        details.bathrooms = rentBathrooms;
-        details.hasStore = rentHasStore;
-        details.hasKitchenStore = rentHasStore;
-        details.furnishing = rentFurnishing;
-        details.serviceCharge = rentServiceCharge ? parseFloat(rentServiceCharge) : 0;
-        details.cautionFee = (rentCautionFee || rentDeposit) ? parseFloat(rentCautionFee || rentDeposit) : 0;
-        details.cautionDeposit = details.cautionFee;
-        details.legalFee = rentLegalFee ? parseFloat(rentLegalFee) : 0;
-        details.agencyFee = rentAgencyFee ? parseFloat(rentAgencyFee) : 0;
-        details.availableFrom = rentAvailableFrom;
-        details.price = parseFloat(propertyPrice) || 0;
-        details.billingLabel = rentBillingPeriod ? `/${rentBillingPeriod.toLowerCase()}` : "";
-        details.totalPackage = details.price + details.cautionFee + details.legalFee + details.agencyFee + details.serviceCharge;
-      } else if (propertySubType === "shortlet_hotel") {
-        // Redirected to wizard — this path is a fallback
-        details.pricePerNight = parseFloat(propertyPrice) || 0;
-        details.amenities = selectedAmenities;
-      } else if (propertySubType === "land") {
-        details.plotSize = landPlotSize;
-        details.sizeUnit = landSizeUnit;
-        details.titleType = landTitleType;
-        details.titleDocument = landTitleType;
-        details.landUseType = landUseType;
-        details.topography = landTopography;
-        details.accessRoad = landAccessRoad;
-        details.fenced = landFenced;
-        details.surveyPlan = landSurveyPlan;
-        details.hasSurveyPlan = landSurveyPlan;
-        details.isFenced = landFenced;
-        details.saleType = landSaleType;
-        details.price = parseFloat(propertyPrice) || 0;
-      } else if (propertySubType === "commercial") {
-        details.commercialType = commercialType;
-        details.spaceSize = commercialSpaceSize;
-        details.spaceSizeSqm = parseFloat(commercialSpaceSize) || 0;
-        details.capacity = commercialCapacity ? parseInt(commercialCapacity) : 0;
-        details.seatingCapacity = details.capacity;
-        details.billingPeriod = commercialBillingPeriod;
-        details.usages = commercialUsages;
-        details.hasParking = commercialHasParking;
-        details.hasSecurity = commercialHasSecurity;
-        details.hasWater = commercialHasWater;
-        details.hasPower = commercialHasPower;
-        details.hasAC = commercialHasAC;
-        details.hasInternet = commercialHasInternet;
-        details.hasElevator = commercialHasElevator;
-        details.hasCanteen = commercialHasCanteen;
-        details.amenities = [
-          commercialHasParking && "Parking",
-          commercialHasSecurity && "Security",
-          commercialHasWater && "Water",
-          commercialHasPower && "Power / Electricity",
-          commercialHasAC && "Air Conditioning",
-          commercialHasInternet && "WiFi / Internet",
-          commercialHasElevator && "Elevator",
-          commercialHasCanteen && "Canteen",
-        ].filter(Boolean) as string[];
-        details.serviceCharge = commercialServiceCharge ? parseFloat(commercialServiceCharge) : 0;
-        details.cautionFee = commercialCautionFee ? parseFloat(commercialCautionFee) : 0;
-        details.legalFee = commercialLegalFee ? parseFloat(commercialLegalFee) : 0;
-        details.agencyFee = commercialAgencyFee ? parseFloat(commercialAgencyFee) : 0;
-        details.price = parseFloat(propertyPrice) || 0;
-        details.billingLabel = commercialBillingPeriod ? `/${commercialBillingPeriod.toLowerCase()}` : "";
-        details.totalPackage = details.price + details.cautionFee + details.legalFee + details.agencyFee + details.serviceCharge;
-      }
-
-      const priceNum = parseFloat(propertyPrice) || 0;
-      const priceLabel = propertySubType === "shortlet_hotel"
-        ? (propertyPrice ? `from ₦${parseFloat(propertyPrice).toLocaleString()}/night` : "")
-        : propertySubType === "rent"
-          ? (priceNum ? `₦${priceNum.toLocaleString()}${details.billingLabel || ""}` : "")
-          : propertySubType === "land"
-            ? (priceNum ? `₦${priceNum.toLocaleString()}${landSaleType === "sale" ? "" : "/" + (landSaleType === "rent" ? "yr" : "lease")}` : "")
-            : propertySubType === "commercial"
-              ? (priceNum ? `₦${priceNum.toLocaleString()}${details.billingLabel || ""}` : "")
-              : (priceNum ? `₦${priceNum.toLocaleString()}/night` : "");
-
-      const typeLabel = propertySubType === "rent"
-        ? (rentHouseType || "Apartment")
-        : propertySubType === "shortlet_hotel"
-          ? "Shortlet & Hotel"
-          : propertySubType === "land"
-            ? "Land"
-            : commercialType || "Commercial";
-
-      const propertyPayload: any = {
-        title: title.trim(),
-        description: description.trim(),
-        propertySubType,
-        type: typeLabel,
-        ...details,
-        price: priceLabel,
-        priceNum,
-        location: fullLocation,
-        state,
-        city,
-        streetAddress,
-        lat: mapLat || null,
-        lon: mapLon || null,
-        businessId: isIndividual ? null : propListAsBizId,
-        businessName: isIndividual ? (user.name || user.email || "Individual Listing") : (selectedPropBiz?.title || selectedPropBiz?.businessName || ""),
-        sellerType: isIndividual ? "individual" : "business",
-        image: primaryImage,
-        images: uploadedImageUrls.length > 0 ? uploadedImageUrls : [primaryImage],
-        imagePublicIds: uploadedImagePublicIds.length > 0 ? uploadedImagePublicIds : (uploadedImagePublicId ? [uploadedImagePublicId] : []),
-        ownerId: user.id,
-        bedrooms: details.bedrooms || 0,
-        bathrooms: details.bathrooms || 0,
-        guests: details.maxGuests || 0,
-        amenities: selectedAmenities,
-        // Mini-site flag: only Shortlet & Hotel qualify as mini-sites;
-        // Rent, Land, Commercial are standard Marketplace listings.
-        miniSiteActive: propertySubType === "shortlet_hotel",
-        status: "Pending",
-        rating: 0,
-        reviews: 0,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      };
-      if (!isIndividual && propListAsBizId) {
-        await addDoc(collection(db, "businesses", propListAsBizId, "properties"), propertyPayload);
-      }
-      try {
-        await createProperty.mutateAsync(propertyPayload);
-      } catch (e) {
-        console.warn("Legacy house_listings write note:", e);
-      }
-      logActivity({ userId: user.id, userEmail: user.email, userName: user.name, action: "create_listing", targetType: "property", targetName: title, details: `Created ${propertySubType} property: ${title}${isIndividual ? " (individual)" : ""}` });
-      toast({ title: "Property listed!" });
-      resetWizard();
-    } catch (err) {
-      console.error(err);
-      toast({ title: "Failed to list property", variant: "destructive" });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleCreateEvent = async () => {
-    if (!user?.id) { navigate("/auth"); return; }
-    if (!title.trim()) {
-      toast({ title: "Please enter an event title", variant: "destructive" });
-      return;
-    }
-    if (!selectedState) {
-      toast({ title: "Please select an event location / state", variant: "destructive" });
-      return;
-    }
-    if (!eventStartDate) {
-      toast({ title: "Please provide an event start date", variant: "destructive" });
-      return;
-    }
-    setIsSubmitting(true);
-    try {
-      const fullLocation = [eventVenue, eventLocation || streetAddress, selectedCity, selectedState].filter(Boolean).join(", ");
-      const validTickets = ticketTypes
-        .filter((t) => t.name.trim())
-        .map((t) => ({
-          name: t.name.trim(),
-          price: Number(t.price) || 0,
-          quantity: Number(t.quantity) || 100,
-        }));
-
-      const primaryImage = uploadedImageUrl || getMockImage(eventCategory || "Event");
-
-      await createEvent.mutateAsync({
-        title: title.trim(),
-        description: description.trim(),
-        category: eventCategory || "General",
-        tags: [eventCategory || "General"],
-        location: fullLocation,
-        venue: eventVenue.trim(),
-        eventLocation: eventLocation || streetAddress,
-        streetAddress: streetAddress || eventLocation,
-        state: selectedState,
-        city: selectedCity || "",
-        lat: mapLat || null,
-        lon: mapLon || null,
-        startDate: eventStartDate,
-        endDate: eventEndDate || eventStartDate,
-        startTime: eventStartTime || "",
-        endTime: eventEndTime || "",
-        ticketTypes: validTickets.length > 0 ? validTickets : [{ name: "General Admission", price: 0, quantity: 100 }],
-        image: primaryImage,
-        imageUrl: primaryImage,
-        imagePublicId: uploadedImagePublicId || "",
-        ownerId: user.id,
-        organizerId: user.id,
-        organizerName: user.name || "Event Organizer",
-        isActive: true,
-        rating: 0,
-      });
-
-      qc.invalidateQueries({ queryKey: ["myListings"] });
-      qc.invalidateQueries({ queryKey: ["events_all"] });
-      qc.invalidateQueries({ queryKey: ["events"] });
-
-      logActivity({
-        userId: user.id,
-        userEmail: user.email,
-        userName: user.name,
-        action: "create_event",
-        targetType: "event",
-        targetName: title,
-        details: `Created event: ${title}`,
-      });
-      toast({ title: "Event published successfully!" });
-      resetWizard();
-    } catch (err: any) {
-      console.error(err);
-      toast({ title: "Failed to create event", description: err?.message, variant: "destructive" });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const reloadListings = () => {
-    // Mutations auto-invalidate queries, no manual reload needed
-  };
 
   const getCollectionForType = (type: string) => {
     switch (type) {
@@ -1105,1223 +411,7 @@ const ProfileDashboard = () => {
     }
   };
 
-  // ── WIZARD FORMS ──
 
-  const renderBusinessForm = () => (
-    <div className="space-y-4 py-2">
-      <div>
-        <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Business Name *</Label>
-        <Input className="mt-1.5" placeholder="e.g. Glokakes Bakehouse" value={title} onChange={(e) => setTitle(e.target.value)} />
-      </div>
-      <div>
-        <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Category *</Label>
-        <Select value={bizCategory} onValueChange={setBizCategory}>
-          <SelectTrigger className="mt-1.5"><SelectValue placeholder="Select category" /></SelectTrigger>
-          <SelectContent>
-            {BUSINESS_CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-          </SelectContent>
-        </Select>
-      </div>
-      <div>
-        <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">State *</Label>
-        <Select value={selectedState} onValueChange={(v) => { setSelectedState(v as NigerianState); setSelectedCity(""); }}>
-          <SelectTrigger className="mt-1.5"><SelectValue placeholder="Select state" /></SelectTrigger>
-          <SelectContent>
-            {NIGERIAN_STATES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-          </SelectContent>
-        </Select>
-      </div>
-      {selectedState && (
-        <div>
-          <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">City / Area</Label>
-          <Select value={selectedCity} onValueChange={setSelectedCity}>
-            <SelectTrigger className="mt-1.5"><SelectValue placeholder="Select area" /></SelectTrigger>
-            <SelectContent>
-              {(STATE_CITIES[selectedState] || []).map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
-      )}
-      <div>
-        <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Location on Map</Label>
-        <p className="text-xs text-muted-foreground mt-1 mb-2">Type your address and confirm the pin location</p>
-        <AddressPicker
-          onLocationConfirmed={(data) => { setStreetAddress(data.address); setMapLat(data.lat); setMapLon(data.lon); }}
-          initialAddress={streetAddress}
-          initialLat={mapLat}
-          initialLon={mapLon}
-        />
-      </div>
-      <div>
-        <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Phone Number *</Label>
-        <Input className="mt-1.5" placeholder="+234 801 234 5678" value={phone} onChange={(e) => setPhone(e.target.value)} />
-      </div>
-      <div>
-        <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">About / Description *</Label>
-        <Textarea className="mt-1.5" placeholder="Tell people about your business..." rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
-      </div>
-      <div>
-        <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Images (first image is cover)</Label>
-        <MultiImageUpload
-          onUploadSuccess={(r) => {
-            setBizImages((prev) => [...prev, r.secureUrl]);
-            setBizImagePublicIds((prev) => [...prev, r.publicId]);
-          }}
-          onRemove={(idx) => {
-            setBizImages((prev) => prev.filter((_, i) => i !== idx));
-            setBizImagePublicIds((prev) => prev.filter((_, i) => i !== idx));
-          }}
-          folder={CLOUDINARY_FOLDERS.BUSINESSES}
-          currentImages={bizImages}
-          buttonText="Add Image"
-          maxImages={10}
-        />
-      </div>
-    </div>
-  );
-
-  const renderProductForm = () => (
-    <div className="space-y-4 py-2">
-      {/* Seller Profile / Storefront Link */}
-      {myBusinesses.length > 0 ? (
-        <div className="rounded-xl border border-border bg-card p-4 space-y-2.5">
-          <div className="flex items-center justify-between">
-            <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Seller Profile / Storefront</Label>
-            <span className="text-[11px] text-muted-foreground">Optional Store Link</span>
-          </div>
-          <Select value={listAsBizId} onValueChange={setListAsBizId}>
-            <SelectTrigger className="mt-1">
-              <SelectValue placeholder="Select Seller Profile" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="individual">Independent Citizen Seller (Direct Listing)</SelectItem>
-              {myBusinesses.map((b) => (
-                <SelectItem key={b.id} value={b.id}>
-                  {b.title} (Registered Business)
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {selectedBiz && listAsBizId !== "individual" && (
-            <div className="flex items-center gap-2 bg-primary/5 border border-primary/20 rounded-lg px-3 py-2 text-xs text-primary font-medium">
-              <Store className="w-4 h-4 shrink-0" />
-              <span>Item will be linked to <strong>{selectedBiz.title}</strong> and featured on the Marketplace.</span>
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className="rounded-xl border border-border/70 bg-card/60 p-3.5 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
-            <ShoppingBag className="w-5 h-5" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-bold text-foreground">Listing as Citizen Seller</p>
-            <p className="text-[11px] text-muted-foreground">Your item will be directly published to Citivas Marketplace for buyers to discover.</p>
-          </div>
-        </div>
-      )}
-
-      {/* Product Photos */}
-      <div className="rounded-xl border border-border bg-card p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Product Photos</Label>
-            <p className="text-xs text-muted-foreground mt-0.5">Upload clear photos of your product. First photo will be the main cover.</p>
-          </div>
-          {productImages.length > 0 && (
-            <Badge variant="secondary" className="font-semibold text-xs">
-              {productImages.length} photo{productImages.length > 1 ? "s" : ""}
-            </Badge>
-          )}
-        </div>
-        <MultiImageUpload
-          onUploadSuccess={(r) => {
-            setProductImages((prev) => [...prev, r.secureUrl]);
-            setProductImagePublicIds((prev) => [...prev, r.publicId]);
-            if (!uploadedImageUrl) setUploadedImageUrl(r.secureUrl);
-          }}
-          onRemove={(idx) => {
-            setProductImages((prev) => prev.filter((_, i) => i !== idx));
-            setProductImagePublicIds((prev) => prev.filter((_, i) => i !== idx));
-          }}
-          folder={CLOUDINARY_FOLDERS.MARKETPLACE}
-          currentImages={productImages}
-          buttonText="Upload Product Photos"
-          maxImages={8}
-        />
-      </div>
-
-      {/* Product Details */}
-      <div className="rounded-xl border border-border bg-card p-4 space-y-4">
-        <div className="flex items-center gap-2 pb-2 border-b border-border/50">
-          <Info className="w-4 h-4 text-primary" />
-          <h4 className="text-xs font-bold uppercase tracking-wider text-foreground">Product Information</h4>
-        </div>
-
-        <div>
-          <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Product Title *</Label>
-          <Input
-            className="mt-1.5"
-            placeholder="e.g. Brand New iPhone 15 Pro Max 256GB Natural Titanium"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-          />
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Category *</Label>
-            <Select value={productCategory} onValueChange={setProductCategory}>
-              <SelectTrigger className="mt-1.5">
-                <SelectValue placeholder="Select category" />
-              </SelectTrigger>
-              <SelectContent>
-                {[
-                  "Phones & Tablets",
-                  "Electronics & Gadgets",
-                  "Fashion & Apparel",
-                  "Home, Kitchen & Furniture",
-                  "Beauty & Personal Care",
-                  "Vehicles & Automotive",
-                  "Sports, Fitness & Outdoor",
-                  "Food & Provisions",
-                  "Services & Freelance",
-                  "Baby & Kids",
-                  "Health & Wellness",
-                  "Other"
-                ].map((c) => (
-                  <SelectItem key={c} value={c}>{c}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div>
-            <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Condition</Label>
-            <Select value={itemCondition} onValueChange={setItemCondition}>
-              <SelectTrigger className="mt-1.5">
-                <SelectValue placeholder="Select condition" />
-              </SelectTrigger>
-              <SelectContent>
-                {[
-                  "Brand New",
-                  "Like New / Open Box",
-                  "Refurbished",
-                  "Used - Excellent",
-                  "Used - Good",
-                  "Used - Fair"
-                ].map((cond) => (
-                  <SelectItem key={cond} value={cond}>{cond}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        <div>
-          <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Description *</Label>
-          <Textarea
-            className="mt-1.5"
-            rows={3}
-            placeholder="Describe your item, key specifications, warranty, what's included in the package, etc..."
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-          />
-        </div>
-      </div>
-
-      {/* Pricing */}
-      <div className="rounded-xl border border-border bg-card p-4 space-y-3">
-        <div className="flex items-center gap-2 pb-2 border-b border-border/50">
-          <BarChart2 className="w-4 h-4 text-primary" />
-          <h4 className="text-xs font-bold uppercase tracking-wider text-foreground">Pricing & Offers</h4>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Regular Price (₦) *</Label>
-            <Input
-              type="number"
-              className="mt-1.5"
-              placeholder="e.g. 150000"
-              value={productPrice}
-              onChange={(e) => setProductPrice(e.target.value)}
-            />
-          </div>
-          <div>
-            <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              Promo Price (₦) <span className="text-muted-foreground/60 normal-case font-normal">(Optional)</span>
-            </Label>
-            <Input
-              type="number"
-              className="mt-1.5"
-              placeholder="e.g. 120000"
-              value={promoPrice}
-              onChange={(e) => setPromoPrice(e.target.value)}
-            />
-          </div>
-        </div>
-
-        {promoPrice && productPrice && Number(productPrice) > Number(promoPrice) && (
-          <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-lg px-3 py-2 text-xs font-medium flex items-center justify-between">
-            <span>Special promo discount active</span>
-            <span className="font-bold">
-              Save ₦{(Number(productPrice) - Number(promoPrice)).toLocaleString()} ({Math.round(((Number(productPrice) - Number(promoPrice)) / Number(productPrice)) * 100)}% off)
-            </span>
-          </div>
-        )}
-      </div>
-
-      {/* Location & Contact */}
-      <div className="rounded-xl border border-border bg-card p-4 space-y-3">
-        <div className="flex items-center gap-2 pb-2 border-b border-border/50">
-          <MapPin className="w-4 h-4 text-primary" />
-          <h4 className="text-xs font-bold uppercase tracking-wider text-foreground">Location & Contact</h4>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">State *</Label>
-            <Select value={selectedState} onValueChange={(v) => { setSelectedState(v as NigerianState); setSelectedCity(""); }}>
-              <SelectTrigger className="mt-1.5">
-                <SelectValue placeholder="Select state" />
-              </SelectTrigger>
-              <SelectContent>
-                {NIGERIAN_STATES.map((s) => (
-                  <SelectItem key={s} value={s}>{s}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div>
-            <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">City / Area *</Label>
-            <Select value={selectedCity} onValueChange={setSelectedCity} disabled={!selectedState}>
-              <SelectTrigger className="mt-1.5">
-                <SelectValue placeholder={selectedState ? "Select area" : "Choose state first"} />
-              </SelectTrigger>
-              <SelectContent>
-                {(STATE_CITIES[selectedState] || []).map((c) => (
-                  <SelectItem key={c} value={c}>{c}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Pickup Location / Landmark</Label>
-            <Input
-              className="mt-1.5"
-              placeholder="e.g. Lekki Phase 1, Admiralty Way"
-              value={streetAddress}
-              onChange={(e) => setStreetAddress(e.target.value)}
-            />
-          </div>
-
-          <div>
-            <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Phone / WhatsApp Number</Label>
-            <Input
-              className="mt-1.5"
-              placeholder="e.g. 08012345678"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-            />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderPropertyForm = () => (
-    <div className="space-y-4 py-2">
-      {/* Always offer mini-site wizard as a shortcut banner */}
-      <div className="p-3 rounded-xl bg-primary/5 border border-primary/20 text-center space-y-1.5">
-        <Hotel className="w-6 h-6 text-primary mx-auto" />
-        <h4 className="font-bold text-xs text-foreground">Shortlet, Hotel & Villa Mini-Site</h4>
-        <p className="text-[11px] text-muted-foreground max-w-sm mx-auto">
-          Nightly stays, serviced apartments, hotels & guest houses use the full booking wizard.
-        </p>
-      </div>
-
-      {/* Property Sub-Type Selector — always shown regardless of businesses */}
-      {!propertySubType ? (
-        <div className="space-y-3">
-          <div>
-            <h4 className="text-xs font-bold uppercase tracking-wider text-foreground">WHAT TYPE OF PROPERTY?</h4>
-            <p className="text-xs text-muted-foreground mt-1">Select the category of property you want to list</p>
-          </div>
-          <div className="grid grid-cols-1 gap-3">
-            {PROPERTY_SUB_TYPES.map((st) => (
-              <button
-                key={st.value}
-                type="button"
-                onClick={() => {
-                  if (st.value === "shortlet_hotel") {
-                    setCreateOpen(false);
-                    navigate("/mini-site-wizard");
-                    return;
-                  }
-                  setPropertySubType(st.value);
-                }}
-                className="flex items-center gap-3 p-4 rounded-xl border border-border/60 hover:border-primary/50 hover:bg-primary/[0.04] transition-all text-left bg-card"
-              >
-                <span className="text-2xl">{st.icon}</span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-foreground">{st.label}</p>
-                  <p className="text-xs text-muted-foreground">{st.desc}</p>
-                </div>
-                <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : (
-        <>
-          {/* Sub-type badge + change button */}
-          <div className="flex items-center gap-2">
-            <Badge variant="secondary" className="gap-1">
-              {PROPERTY_SUB_TYPES.find((s) => s.value === propertySubType)?.icon}{' '}
-              {PROPERTY_SUB_TYPES.find((s) => s.value === propertySubType)?.label}
-            </Badge>
-            <button type="button" onClick={() => setPropertySubType("")} className="text-xs text-primary hover:underline">Change</button>
-          </div>
-
-          {/* Seller Profile / optional business link */}
-          <div className="rounded-xl border border-border bg-card p-4 space-y-2.5">
-            <div className="flex items-center justify-between">
-              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Seller Profile (Optional)</Label>
-              <span className="text-[11px] text-muted-foreground">Link to an agency or list as individual</span>
-            </div>
-            <Select value={propListAsBizId} onValueChange={setPropListAsBizId}>
-              <SelectTrigger className="mt-1">
-                <SelectValue placeholder="Individual Listing (no business)" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="individual">Individual Listing (Direct)</SelectItem>
-                {myBusinesses.map((b) => (
-                  <SelectItem key={b.id} value={b.id}>
-                    {b.title} (Registered)
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {selectedPropBiz && propListAsBizId !== "individual" && (
-              <div className="flex items-center gap-2 bg-primary/5 border border-primary/20 rounded-lg px-3 py-2 text-xs text-primary font-medium">
-                <Store className="w-4 h-4 shrink-0" />
-                <span>Linked to <strong>{selectedPropBiz.title}</strong></span>
-              </div>
-            )}
-          </div>
-
-          {/* ── Location Section — independent, always shown ── */}
-          <div className="rounded-xl border border-border bg-card p-4 space-y-3">
-            <div className="flex items-center gap-2 pb-2 border-b border-border/60">
-              <MapPin className="w-4 h-4 text-primary" />
-              <h4 className="text-xs font-bold uppercase tracking-wider text-foreground">Location</h4>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs font-semibold">State *</Label>
-                <Select
-                  value={selectedState}
-                  onValueChange={(v) => { setSelectedState(v as NigerianState); setSelectedCity(""); }}
-                >
-                  <SelectTrigger className="mt-1"><SelectValue placeholder="Select state" /></SelectTrigger>
-                  <SelectContent>
-                    {NIGERIAN_STATES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-xs font-semibold">City / Area</Label>
-                <Select value={selectedCity} onValueChange={setSelectedCity} disabled={!selectedState}>
-                  <SelectTrigger className="mt-1">
-                    <SelectValue placeholder={selectedState ? "Select area" : "Select state first"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(STATE_CITIES[selectedState] || []).map((c) => (
-                      <SelectItem key={c} value={c}>{c}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div>
-              <Label className="text-xs font-semibold">Full Street Address</Label>
-              <Input
-                className="mt-1"
-                placeholder="House number, street name, estate, landmark"
-                value={streetAddress}
-                onChange={(e) => setStreetAddress(e.target.value)}
-              />
-            </div>
-            <div>
-              <Label className="text-xs font-semibold">Pin on Map (optional)</Label>
-              <p className="text-[10px] text-muted-foreground mt-0.5 mb-1.5">Confirm the exact location for GIS lookup</p>
-              <AddressPicker
-                onLocationConfirmed={(data) => { setStreetAddress(data.address); setMapLat(data.lat); setMapLon(data.lon); }}
-                initialAddress={streetAddress}
-                initialLat={mapLat}
-                initialLon={mapLon}
-              />
-            </div>
-          </div>
-
-          {/* Common fields */}
-          <div>
-            <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Property Title *</Label>
-            <Input className="mt-1.5" placeholder="e.g. Modern 2-Bedroom in GRA" value={title} onChange={(e) => setTitle(e.target.value)} />
-          </div>
-          <div>
-            <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Description *</Label>
-            <Textarea className="mt-1.5" placeholder="Describe your property..." rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
-          </div>
-
-          {/* ── RENT FIELDS ── */}
-          {propertySubType === "rent" && (
-            <div className="space-y-4 p-4 rounded-xl border border-border bg-card">
-              <div className="flex items-center gap-2 pb-2 border-b">
-                <Home className="w-4 h-4 text-primary" />
-                <p className="text-xs font-bold uppercase tracking-wider text-foreground">House / Apartment for Rent</p>
-              </div>
-
-              <div>
-                <Label className="text-xs font-semibold">Property Type / House Type *</Label>
-                <Select value={rentHouseType} onValueChange={setRentHouseType}>
-                  <SelectTrigger className="mt-1"><SelectValue placeholder="Select type" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Duplex">Duplex</SelectItem>
-                    <SelectItem value="Bungalow">Bungalow</SelectItem>
-                    <SelectItem value="Terraced Duplex">Terraced Duplex</SelectItem>
-                    <SelectItem value="Semi-Detached Duplex">Semi-Detached Duplex</SelectItem>
-                    <SelectItem value="Detached Duplex">Detached Duplex</SelectItem>
-                    <SelectItem value="Flat / Apartment">Flat / Apartment</SelectItem>
-                    <SelectItem value="Mini Flat">Mini Flat (1 Bedroom)</SelectItem>
-                    <SelectItem value="Room & Parlour">Room & Parlour</SelectItem>
-                    <SelectItem value="Penthouse">Penthouse</SelectItem>
-                    <SelectItem value="Mansion">Mansion</SelectItem>
-                    <SelectItem value="Other">Other</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs font-semibold">Annual Rent (₦) *</Label>
-                  <Input className="mt-1" type="number" placeholder="e.g. 1500000" value={propertyPrice} onChange={(e) => setPropertyPrice(e.target.value)} />
-                  <p className="text-[10px] text-muted-foreground mt-1">Base rent before fees</p>
-                </div>
-                <div>
-                  <Label className="text-xs font-semibold">Payment Plan *</Label>
-                  <Select value={rentBillingPeriod} onValueChange={setRentBillingPeriod}>
-                    <SelectTrigger className="mt-1"><SelectValue placeholder="Select plan" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="1 Year">1 Year (Annual)</SelectItem>
-                      <SelectItem value="2 Years">2 Years</SelectItem>
-                      <SelectItem value="1.5 Years">1.5 Years (1 Year + 6 Months)</SelectItem>
-                      <SelectItem value="6 Months">6 Months</SelectItem>
-                      <SelectItem value="Monthly">Monthly</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs font-semibold">Bedrooms *</Label>
-                  <div className="flex items-center gap-2 mt-1">
-                    <button type="button" onClick={() => setRentBedrooms(Math.max(0, rentBedrooms - 1))} className="w-8 h-8 rounded-lg border border-border flex items-center justify-center hover:bg-muted">-</button>
-                    <span className="w-8 text-center text-sm font-bold">{rentBedrooms}</span>
-                    <button type="button" onClick={() => setRentBedrooms(rentBedrooms + 1)} className="w-8 h-8 rounded-lg border border-border flex items-center justify-center hover:bg-muted">+</button>
-                  </div>
-                </div>
-                <div>
-                  <Label className="text-xs font-semibold">Bathrooms *</Label>
-                  <div className="flex items-center gap-2 mt-1">
-                    <button type="button" onClick={() => setRentBathrooms(Math.max(0, rentBathrooms - 1))} className="w-8 h-8 rounded-lg border border-border flex items-center justify-center hover:bg-muted">-</button>
-                    <span className="w-8 text-center text-sm font-bold">{rentBathrooms}</span>
-                    <button type="button" onClick={() => setRentBathrooms(rentBathrooms + 1)} className="w-8 h-8 rounded-lg border border-border flex items-center justify-center hover:bg-muted">+</button>
-                  </div>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-muted/30">
-                  <div>
-                    <Label className="text-xs font-semibold">Kitchen with Store?</Label>
-                    <p className="text-[10px] text-muted-foreground">Store room attached</p>
-                  </div>
-                  <button type="button" onClick={() => setRentHasStore(!rentHasStore)} className={`w-10 h-6 rounded-full relative transition-colors ${rentHasStore ? "bg-primary" : "bg-muted-foreground/30"}`}>
-                    <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all`} style={{ left: rentHasStore ? "18px" : "2px" }} />
-                  </button>
-                </div>
-                <div>
-                  <Label className="text-xs font-semibold">Furnishing</Label>
-                  <Select value={rentFurnishing} onValueChange={setRentFurnishing}>
-                    <SelectTrigger className="mt-1"><SelectValue placeholder="Select" /></SelectTrigger>
-                    <SelectContent>
-                      {FURNISHING_OPTIONS.map((f) => <SelectItem key={f} value={f}>{f}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div>
-                <Label className="text-xs font-semibold">Road Condition</Label>
-                <Select value={rentRoadCondition} onValueChange={setRentRoadCondition}>
-                  <SelectTrigger className="mt-1"><SelectValue placeholder="Select condition" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Tarred">Tarred Road</SelectItem>
-                    <SelectItem value="Motorable">Motorable (Untarred but Passable)</SelectItem>
-                    <SelectItem value="Bad">Bad Road (Difficult Access)</SelectItem>
-                    <SelectItem value="Gated Estate">Gated Estate</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-xs font-semibold">Photo of Access Road</Label>
-                <p className="text-[10px] text-muted-foreground mt-0.5 mb-1">Upload a picture of the road leading to the house</p>
-                {rentRoadImage ? (
-                  <div className="relative w-full aspect-[16/9] rounded-lg border border-border overflow-hidden mt-1">
-                    <img src={rentRoadImage} alt="Road" className="w-full h-full object-contain bg-muted" />
-                    <button
-                      type="button"
-                      onClick={() => { setRentRoadImage(""); setRentRoadImagePublicId(""); }}
-                      className="absolute top-2 right-2 p-1.5 bg-destructive text-destructive-foreground rounded-md shadow"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ) : (
-                  <ImageUpload
-                    onUploadSuccess={(r) => { setRentRoadImage(r.secureUrl); setRentRoadImagePublicId(r.publicId); }}
-                    folder={CLOUDINARY_FOLDERS.BUSINESSES}
-                    currentImage={rentRoadImage}
-                  />
-                )}
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs font-semibold">Service Charge (₦)</Label>
-                  <Input className="mt-1" type="number" placeholder="e.g. 150000" value={rentServiceCharge} onChange={(e) => setRentServiceCharge(e.target.value)} />
-                </div>
-                <div>
-                  <Label className="text-xs font-semibold">Caution Fee (₦)</Label>
-                  <Input className="mt-1" type="number" placeholder="e.g. 200000" value={rentCautionFee} onChange={(e) => setRentCautionFee(e.target.value)} />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs font-semibold">Legal Fee (₦)</Label>
-                  <Input className="mt-1" type="number" placeholder="e.g. 75000" value={rentLegalFee} onChange={(e) => setRentLegalFee(e.target.value)} />
-                </div>
-                <div>
-                  <Label className="text-xs font-semibold">Agency Fee (₦)</Label>
-                  <Input className="mt-1" type="number" placeholder="e.g. 150000 (10%)" value={rentAgencyFee} onChange={(e) => setRentAgencyFee(e.target.value)} />
-                  <p className="text-[10px] text-muted-foreground mt-1">Typically 10% of rent</p>
-                </div>
-              </div>
-              {(propertyPrice || rentCautionFee || rentLegalFee || rentAgencyFee || rentServiceCharge) && (
-                <div className="bg-primary/5 border border-primary/20 rounded-lg p-3 text-xs">
-                  <p className="font-bold text-primary mb-1">Total Move-in Cost Preview</p>
-                  <p className="font-mono font-bold">
-                    ₦{(
-                      (Number(propertyPrice) || 0) +
-                      (Number(rentCautionFee || rentDeposit) || 0) +
-                      (Number(rentLegalFee) || 0) +
-                      (Number(rentAgencyFee) || 0) +
-                      (Number(rentServiceCharge) || 0)
-                    ).toLocaleString()}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground">Rent + Caution + Legal + Agency + Service</p>
-                </div>
-              )}
-              <div>
-                <Label className="text-xs font-semibold">Available From *</Label>
-                <Input className="mt-1" type="date" value={rentAvailableFrom} onChange={(e) => setRentAvailableFrom(e.target.value)} />
-              </div>
-            </div>
-          )}
-
-          {/* ── SHORTLET & HOTEL → Redirect to wizard (fallback) ── */}
-          {propertySubType === "shortlet_hotel" && (
-            <div className="space-y-3 p-4 rounded-xl border border-primary/30 bg-primary/5 text-center">
-              <Hotel className="w-8 h-8 text-primary mx-auto" />
-              <p className="text-sm font-bold text-foreground">Shortlet & Hotel Setup</p>
-              <p className="text-xs text-muted-foreground">This property type uses the mini-site wizard for a guided setup experience.</p>
-              <button type="button" onClick={() => { setCreateOpen(false); navigate("/mini-site-wizard"); }} className="text-sm font-bold text-primary hover:underline">
-                Open Full Wizard &rarr;
-              </button>
-            </div>
-          )}
-
-          {/* ── LAND FIELDS ── */}
-          {propertySubType === "land" && (
-            <div className="space-y-4 p-4 rounded-xl border border-border bg-card">
-              <div className="flex items-center gap-2 pb-2 border-b">
-                <span className="text-lg">📐</span>
-                <p className="text-xs font-bold uppercase tracking-wider text-foreground">Land Details</p>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs font-semibold">Price (₦) *</Label>
-                  <Input className="mt-1" type="number" placeholder="e.g. 25000000" value={propertyPrice} onChange={(e) => setPropertyPrice(e.target.value)} />
-                </div>
-                <div>
-                  <Label className="text-xs font-semibold">Sale Type</Label>
-                  <Select value={landSaleType} onValueChange={setLandSaleType}>
-                    <SelectTrigger className="mt-1"><SelectValue placeholder="Select" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="sale">Full Sale (Outright Purchase)</SelectItem>
-                      <SelectItem value="rent">Hire / Rent</SelectItem>
-                      <SelectItem value="lease">Lease (Long-term)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs font-semibold">Land Use Type</Label>
-                  <Select value={landUseType} onValueChange={setLandUseType}>
-                    <SelectTrigger className="mt-1"><SelectValue placeholder="Select use" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Residential">Residential</SelectItem>
-                      <SelectItem value="Commercial">Commercial</SelectItem>
-                      <SelectItem value="Agricultural">Agricultural / Farm</SelectItem>
-                      <SelectItem value="Industrial">Industrial</SelectItem>
-                      <SelectItem value="Mixed-Use">Mixed-Use</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label className="text-xs font-semibold">Title Document *</Label>
-                  <Select value={landTitleType} onValueChange={setLandTitleType}>
-                    <SelectTrigger className="mt-1"><SelectValue placeholder="Select title" /></SelectTrigger>
-                    <SelectContent>
-                      {LAND_TITLE_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs font-semibold">Plot Size *</Label>
-                  <Input className="mt-1" type="number" placeholder="e.g. 500" value={landPlotSize} onChange={(e) => setLandPlotSize(e.target.value)} />
-                </div>
-                <div>
-                  <Label className="text-xs font-semibold">Unit *</Label>
-                  <Select value={landSizeUnit} onValueChange={setLandSizeUnit}>
-                    <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {LAND_SIZE_UNITS.map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs font-semibold">Topography</Label>
-                  <Select value={landTopography} onValueChange={setLandTopography}>
-                    <SelectTrigger className="mt-1"><SelectValue placeholder="Select" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Dry Flat">Dry & Flat</SelectItem>
-                      <SelectItem value="Dry Sloped">Dry & Sloped</SelectItem>
-                      <SelectItem value="Wetland">Wetland / Waterlogged</SelectItem>
-                      <SelectItem value="Rocky">Rocky / Hilly</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label className="text-xs font-semibold">Access Road</Label>
-                  <Select value={landAccessRoad} onValueChange={setLandAccessRoad}>
-                    <SelectTrigger className="mt-1"><SelectValue placeholder="Select" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Tarred">Tarred Road</SelectItem>
-                      <SelectItem value="Untarred Graded">Graded / Untarred</SelectItem>
-                      <SelectItem value="Bush Path">Bush Path</SelectItem>
-                      <SelectItem value="No Road">No Road Access</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-muted/20">
-                  <div>
-                    <Label className="text-xs font-semibold">Fenced?</Label>
-                    <p className="text-[10px] text-muted-foreground">Perimeter fenced</p>
-                  </div>
-                  <button type="button" onClick={() => setLandFenced(!landFenced)} className={`w-10 h-6 rounded-full relative transition-colors ${landFenced ? "bg-primary" : "bg-muted-foreground/30"}`}>
-                    <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all`} style={{ left: landFenced ? "18px" : "2px" }} />
-                  </button>
-                </div>
-                <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-muted/20">
-                  <div>
-                    <Label className="text-xs font-semibold">Survey Plan?</Label>
-                    <p className="text-[10px] text-muted-foreground">Available & verified</p>
-                  </div>
-                  <button type="button" onClick={() => setLandSurveyPlan(!landSurveyPlan)} className={`w-10 h-6 rounded-full relative transition-colors ${landSurveyPlan ? "bg-primary" : "bg-muted-foreground/30"}`}>
-                    <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all`} style={{ left: landSurveyPlan ? "18px" : "2px" }} />
-                  </button>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs font-semibold">Latitude (optional)</Label>
-                  <Input className="mt-1" type="number" step="0.000001" placeholder="e.g. 4.8156" value={mapLat ?? ""} onChange={(e) => setMapLat(e.target.value ? parseFloat(e.target.value) : undefined)} />
-                </div>
-                <div>
-                  <Label className="text-xs font-semibold">Longitude (optional)</Label>
-                  <Input className="mt-1" type="number" step="0.000001" placeholder="e.g. 7.0498" value={mapLon ?? ""} onChange={(e) => setMapLon(e.target.value ? parseFloat(e.target.value) : undefined)} />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ── COMMERCIAL FIELDS ── */}
-          {propertySubType === "commercial" && (
-            <div className="space-y-4 p-4 rounded-xl border border-border bg-card">
-              <div className="flex items-center gap-2 pb-2 border-b">
-                <span className="text-lg">🏢</span>
-                <p className="text-xs font-bold uppercase tracking-wider text-foreground">Commercial — Halls, Offices, Shops, Warehouses</p>
-              </div>
-              <div>
-                <Label className="text-xs font-semibold">Commercial Type *</Label>
-                <Select value={commercialType} onValueChange={setCommercialType}>
-                  <SelectTrigger className="mt-1"><SelectValue placeholder="Select type" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Hall/Event Center">Hall / Event Center</SelectItem>
-                    <SelectItem value="Office Space">Office Space</SelectItem>
-                    <SelectItem value="Shop/Retail">Shop / Retail Store</SelectItem>
-                    <SelectItem value="Warehouse">Warehouse / Storage</SelectItem>
-                    <SelectItem value="Plaza/Complex">Plaza / Shopping Complex Unit</SelectItem>
-                    <SelectItem value="Co-working Space">Co-working Space</SelectItem>
-                    <SelectItem value="Restaurant Space">Restaurant / Eatery Space</SelectItem>
-                    <SelectItem value="Filling Station">Filling Station</SelectItem>
-                    <SelectItem value="Church/Mosque Space">Church / Mosque Space</SelectItem>
-                    <SelectItem value="Other">Other</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs font-semibold">Rent / Price (₦) *</Label>
-                  <Input className="mt-1" type="number" placeholder="e.g. 5000000" value={propertyPrice} onChange={(e) => setPropertyPrice(e.target.value)} />
-                </div>
-                <div>
-                  <Label className="text-xs font-semibold">Billing Period *</Label>
-                  <Select value={commercialBillingPeriod} onValueChange={setCommercialBillingPeriod}>
-                    <SelectTrigger className="mt-1"><SelectValue placeholder="Select" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Per Annum">Per Annum (1 Year)</SelectItem>
-                      <SelectItem value="Per 2 Years">Per 2 Years</SelectItem>
-                      <SelectItem value="Per 6 Months">Per 6 Months</SelectItem>
-                      <SelectItem value="Per Month">Per Month</SelectItem>
-                      <SelectItem value="Per Event">Per Event / Day (Hall)</SelectItem>
-                      <SelectItem value="Outright Sale">Outright Sale</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs font-semibold">Space Size (sqm) *</Label>
-                  <Input className="mt-1" type="number" placeholder="e.g. 250" value={commercialSpaceSize} onChange={(e) => setCommercialSpaceSize(e.target.value)} />
-                </div>
-                <div>
-                  <Label className="text-xs font-semibold">Capacity (people)</Label>
-                  <Input className="mt-1" type="number" placeholder="e.g. 300 for hall" value={commercialCapacity} onChange={(e) => setCommercialCapacity(e.target.value)} />
-                  <p className="text-[10px] text-muted-foreground mt-1">Seats / occupancy for halls</p>
-                </div>
-              </div>
-              <div>
-                <Label className="text-xs font-semibold mb-2 block">Amenities</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { k: "commercialHasParking", v: commercialHasParking, s: setCommercialHasParking, label: "Parking" },
-                    { k: "commercialHasSecurity", v: commercialHasSecurity, s: setCommercialHasSecurity, label: "Security" },
-                    { k: "commercialHasWater", v: commercialHasWater, s: setCommercialHasWater, label: "Water Supply" },
-                    { k: "commercialHasPower", v: commercialHasPower, s: setCommercialHasPower, label: "Power / Electricity" },
-                    { k: "commercialHasAC", v: commercialHasAC, s: setCommercialHasAC, label: "Air Conditioning" },
-                    { k: "commercialHasInternet", v: commercialHasInternet, s: setCommercialHasInternet, label: "WiFi / Internet" },
-                    { k: "commercialHasElevator", v: commercialHasElevator, s: setCommercialHasElevator, label: "Elevator / Lift" },
-                    { k: "commercialHasCanteen", v: commercialHasCanteen, s: setCommercialHasCanteen, label: "Canteen / Kitchen" },
-                  ].map(({ v, s, label }) => (
-                    <div key={label} className="flex items-center justify-between p-2.5 rounded-lg border border-border bg-muted/20">
-                      <Label className="text-[11px] font-medium">{label}</Label>
-                      <button type="button" onClick={() => s(!v)} className={`w-9 h-5 rounded-full relative transition-colors ${v ? "bg-primary" : "bg-muted-foreground/30"}`}>
-                        <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow`} style={{ left: v ? "16px" : "2px" }} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs font-semibold">Service Charge (₦)</Label>
-                  <Input className="mt-1" type="number" placeholder="e.g. 300000" value={commercialServiceCharge} onChange={(e) => setCommercialServiceCharge(e.target.value)} />
-                </div>
-                <div>
-                  <Label className="text-xs font-semibold">Caution Fee (₦)</Label>
-                  <Input className="mt-1" type="number" placeholder="e.g. 500000" value={commercialCautionFee} onChange={(e) => setCommercialCautionFee(e.target.value)} />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs font-semibold">Legal Fee (₦)</Label>
-                  <Input className="mt-1" type="number" placeholder="e.g. 100000" value={commercialLegalFee} onChange={(e) => setCommercialLegalFee(e.target.value)} />
-                </div>
-                <div>
-                  <Label className="text-xs font-semibold">Agency Fee (₦)</Label>
-                  <Input className="mt-1" type="number" placeholder="e.g. 500000 (10%)" value={commercialAgencyFee} onChange={(e) => setCommercialAgencyFee(e.target.value)} />
-                </div>
-              </div>
-              <div>
-                <Label className="text-xs font-semibold mb-2 block">Suitable For</Label>
-                <div className="flex flex-wrap gap-2">
-                  {COMMERCIAL_USAGES.map((u) => (
-                    <button
-                      key={u}
-                      type="button"
-                      onClick={() => setCommercialUsages((prev) => prev.includes(u) ? prev.filter((x) => x !== u) : [...prev, u])}
-                      className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
-                        commercialUsages.includes(u) ? "border-primary bg-primary/10 text-primary" : "border-border hover:bg-muted"
-                      }`}
-                    >
-                      {u}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Cover Image + Gallery */}
-          <div>
-            <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Images (first image is cover)</Label>
-            <MultiImageUpload
-              onUploadSuccess={(r) => {
-                setUploadedImageUrls((prev) => [...prev, r.secureUrl]);
-                setUploadedImagePublicIds((prev) => [...prev, r.publicId]);
-              }}
-              onRemove={(idx) => {
-                setUploadedImageUrls((prev) => prev.filter((_, i) => i !== idx));
-                setUploadedImagePublicIds((prev) => prev.filter((_, i) => i !== idx));
-              }}
-              folder={CLOUDINARY_FOLDERS.BUSINESSES}
-              currentImages={uploadedImageUrls}
-              buttonText="Add Image"
-              maxImages={10}
-            />
-          </div>
-        </>
-      )}
-    </div>
-  );
-
-  const renderEventForm = () => (
-    <div className="py-2">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* ── Left Column (2/3): General Info, Schedule, Tickets ── */}
-        <div className="md:col-span-2 space-y-4">
-          {/* General Information */}
-          <div className="rounded-xl border border-border bg-card p-4">
-            <div className="flex items-center gap-2 mb-4 pb-3 border-b border-border">
-              <Info className="w-4 h-4 text-primary" />
-              <h3 className="text-sm font-bold uppercase tracking-wider">General Information</h3>
-            </div>
-            <div className="space-y-4">
-              <div>
-                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Event Title *</Label>
-                <Input className="mt-1.5" placeholder="e.g. Lagos Food & Wine Festival" value={title} onChange={(e) => setTitle(e.target.value)} />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Event Category</Label>
-                  <Select value={eventCategory} onValueChange={setEventCategory}>
-                    <SelectTrigger className="mt-1.5"><SelectValue placeholder="Select category" /></SelectTrigger>
-                    <SelectContent>
-                      {EVENT_CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Venue Name</Label>
-                  <Input className="mt-1.5" placeholder="e.g. Eko Atlantic" value={eventVenue} onChange={(e) => setEventVenue(e.target.value)} />
-                </div>
-              </div>
-              <div>
-                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Description *</Label>
-                <Textarea className="mt-1.5" rows={3} placeholder="Describe your event..." value={description} onChange={(e) => setDescription(e.target.value)} />
-              </div>
-            </div>
-          </div>
-
-          {/* Schedule & Contact */}
-          <div className="rounded-xl border border-border bg-card p-4">
-            <div className="flex items-center gap-2 mb-4 pb-3 border-b border-border">
-              <CalendarClock className="w-4 h-4 text-primary" />
-              <h3 className="text-sm font-bold uppercase tracking-wider">Schedule & Contact</h3>
-            </div>
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div>
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Start Date *</Label>
-                  <Input type="date" className="mt-1.5" value={eventStartDate} onChange={(e) => setEventStartDate(e.target.value)} />
-                </div>
-                <div>
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">End Date *</Label>
-                  <Input type="date" className="mt-1.5" value={eventEndDate} onChange={(e) => setEventEndDate(e.target.value)} />
-                </div>
-                <div>
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">State *</Label>
-                  <Select value={selectedState} onValueChange={(v) => { setSelectedState(v as NigerianState); setSelectedCity(""); }}>
-                    <SelectTrigger className="mt-1.5"><SelectValue placeholder="Select state" /></SelectTrigger>
-                    <SelectContent>
-                      {NIGERIAN_STATES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">City / Area</Label>
-                  <Select value={selectedCity} onValueChange={setSelectedCity} disabled={!selectedState}>
-                    <SelectTrigger className="mt-1.5"><SelectValue placeholder={selectedState ? "Select area" : "Select state first"} /></SelectTrigger>
-                    <SelectContent>
-                      {(STATE_CITIES[selectedState] || []).map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Start Time</Label>
-                  <Input type="time" className="mt-1.5" value={eventStartTime} onChange={(e) => setEventStartTime(e.target.value)} />
-                </div>
-                <div>
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">End Time</Label>
-                  <Input type="time" className="mt-1.5" value={eventEndTime} onChange={(e) => setEventEndTime(e.target.value)} />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Ticket Settings */}
-          <div className="rounded-xl border border-border bg-card p-4">
-            <div className="flex items-center gap-2 mb-4 pb-3 border-b border-border">
-              <Ticket className="w-4 h-4 text-primary" />
-              <h3 className="text-sm font-bold uppercase tracking-wider">Ticket Settings</h3>
-            </div>
-            <div className="space-y-2">
-              {ticketTypes.length > 0 && (
-                <div className="grid grid-cols-12 gap-2 px-1">
-                  <span className="col-span-5 text-xs font-bold uppercase tracking-wider text-muted-foreground">Tier Name</span>
-                  <span className="col-span-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">Price (₦)</span>
-                  <span className="col-span-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">Capacity</span>
-                  <span className="col-span-1" />
-                </div>
-              )}
-              {ticketTypes.map((ticket, i) => (
-                <div key={i} className="grid grid-cols-12 gap-2 items-center">
-                  <div className="col-span-5">
-                    <Input placeholder="e.g. Regular" value={ticket.name} onChange={(e) => { const copy = [...ticketTypes]; copy[i] = { ...copy[i], name: e.target.value }; setTicketTypes(copy); }} />
-                  </div>
-                  <div className="col-span-3">
-                    <Input type="number" placeholder="0" value={ticket.price} onChange={(e) => { const copy = [...ticketTypes]; copy[i] = { ...copy[i], price: e.target.value }; setTicketTypes(copy); }} />
-                  </div>
-                  <div className="col-span-3">
-                    <Input type="number" placeholder="100" value={ticket.quantity} onChange={(e) => { const copy = [...ticketTypes]; copy[i] = { ...copy[i], quantity: e.target.value }; setTicketTypes(copy); }} />
-                  </div>
-                  <div className="col-span-1 flex justify-center">
-                    {ticketTypes.length > 1 && (
-                      <button onClick={() => setTicketTypes(ticketTypes.filter((_, j) => j !== i))} className="p-2 text-destructive hover:bg-destructive/10 rounded-lg"><Trash2 className="w-4 h-4" /></button>
-                    )}
-                  </div>
-                </div>
-              ))}
-              <Button type="button" variant="outline" className="w-full mt-2 border-dashed" onClick={() => setTicketTypes([...ticketTypes, { name: "", price: "0", quantity: "100" }])}>
-                <Plus className="w-4 h-4 mr-1" /> Add Another Ticket Tier
-              </Button>
-            </div>
-          </div>
-        </div>
-
-        {/* ── Right Column (1/3): Banner + Map ── */}
-        <div className="space-y-4">
-          {/* Event Banner */}
-          <div className="rounded-xl border border-border bg-card p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Event Banner</h3>
-              <span className="text-xs text-primary font-medium flex items-center gap-1"><ImageIcon className="w-3 h-3" /> Change</span>
-            </div>
-            <ImageUpload
-              onUploadSuccess={(r) => { setUploadedImageUrl(r.secureUrl); setUploadedImagePublicId(r.publicId); }}
-              folder={CLOUDINARY_FOLDERS.EVENTS}
-              currentImage={uploadedImageUrl}
-              buttonText="Upload Banner"
-            />
-            <p className="text-xs text-muted-foreground text-center mt-2">Recommended size: 1200 × 630 px</p>
-          </div>
-
-          {/* Map Location */}
-          <div className="rounded-xl border border-border bg-card p-4">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">Map Location</h3>
-            <AddressPicker
-              onLocationConfirmed={(data) => { setEventLocation(data.address); setStreetAddress(data.address); setMapLat(data.lat); setMapLon(data.lon); }}
-              initialAddress={eventLocation || streetAddress}
-              initialLat={mapLat}
-              initialLon={mapLon}
-            />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderRestaurantForm = () => (
-    <div className="space-y-4 py-2">
-      <div className="p-4 rounded-2xl bg-gradient-to-r from-orange-500/10 via-amber-500/10 to-transparent border border-orange-500/20 space-y-2.5">
-        <div className="flex items-start gap-3">
-          <div className="w-10 h-10 rounded-xl bg-[#ea580c] text-white flex items-center justify-center shrink-0 shadow-sm">
-            <UtensilsCrossed className="w-5 h-5" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <h4 className="font-bold text-sm text-foreground">Interactive Restaurant & Menu Wizard</h4>
-              <Badge variant="secondary" className="text-[10px] bg-orange-100 text-orange-800 font-bold border-0">Recommended</Badge>
-            </div>
-            <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-              Build a complete restaurant mini-site with digital menus, dish prices, dietary tags, photos, dining amenities, opening hours, and table reservation booking.
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center justify-end pt-1">
-          <Button
-            size="sm"
-            className="rounded-xl font-bold bg-[#ea580c] hover:bg-[#c2410c] text-white gap-1.5 shadow-sm"
-            onClick={() => {
-              setCreateOpen(false);
-              navigate("/restaurant-wizard");
-            }}
-          >
-            <Sparkles className="w-3.5 h-3.5" /> Launch Full Restaurant Wizard
-          </Button>
-        </div>
-      </div>
-
-      <div className="relative flex items-center justify-center my-2">
-        <div className="border-t border-border w-full" />
-        <span className="bg-card px-3 text-[11px] font-bold text-muted-foreground uppercase tracking-wider absolute">
-          Or Quick Register Profile
-        </span>
-      </div>
-
-      <div>
-        <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Restaurant / Eatery Name *</Label>
-        <Input className="mt-1.5" placeholder="e.g. Yellow Chilli Restaurant & Bar" value={title} onChange={(e) => setTitle(e.target.value)} />
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div>
-          <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Primary Cuisine *</Label>
-          <Select value={cuisineType} onValueChange={setCuisineType}>
-            <SelectTrigger className="mt-1.5"><SelectValue placeholder="Select cuisine" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="Nigerian / Local Delicacies">Nigerian / Local Delicacies</SelectItem>
-              <SelectItem value="Continental & European">Continental & European</SelectItem>
-              <SelectItem value="Fast Food & Shawarma">Fast Food & Shawarma</SelectItem>
-              <SelectItem value="Afro-fusion & Grills">Afro-fusion & Grills</SelectItem>
-              <SelectItem value="Seafood Specialist">Seafood Specialist</SelectItem>
-              <SelectItem value="Cafe, Pastry & Bakery">Cafe, Pastry & Bakery</SelectItem>
-              <SelectItem value="Asian / Chinese / Pan-Asian">Asian / Chinese / Pan-Asian</SelectItem>
-              <SelectItem value="Drinks, Lounge & Cocktails">Drinks, Lounge & Cocktails</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div>
-          <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Price Tier</Label>
-          <Select value={priceRange} onValueChange={setPriceRange}>
-            <SelectTrigger className="mt-1.5"><SelectValue placeholder="Select tier" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="₦ (Budget Friendly)">₦ (Budget Friendly)</SelectItem>
-              <SelectItem value="₦₦ (Casual Dining)">₦₦ (Casual Dining)</SelectItem>
-              <SelectItem value="₦₦₦ (Upscale)">₦₦₦ (Upscale)</SelectItem>
-              <SelectItem value="₦₦₦₦ (Fine Dining / Luxury)">₦₦₦₦ (Fine Dining / Luxury)</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      <div>
-        <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">State *</Label>
-        <Select value={selectedState} onValueChange={(v) => { setSelectedState(v as NigerianState); setSelectedCity(""); }}>
-          <SelectTrigger className="mt-1.5"><SelectValue placeholder="Select state" /></SelectTrigger>
-          <SelectContent>
-            {NIGERIAN_STATES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-          </SelectContent>
-        </Select>
-      </div>
-
-      {selectedState && (
-        <div>
-          <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">City / Area</Label>
-          <Select value={selectedCity} onValueChange={setSelectedCity}>
-            <SelectTrigger className="mt-1.5"><SelectValue placeholder="Select area" /></SelectTrigger>
-            <SelectContent>
-              {(STATE_CITIES[selectedState] || []).map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
-      )}
-
-      <div>
-        <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Location on Map</Label>
-        <p className="text-xs text-muted-foreground mt-1 mb-2">Pinpoint restaurant location for map discovery and driving directions</p>
-        <AddressPicker
-          onLocationConfirmed={(data) => { setStreetAddress(data.address); setMapLat(data.lat); setMapLon(data.lon); }}
-          initialAddress={streetAddress}
-          initialLat={mapLat}
-          initialLon={mapLon}
-        />
-      </div>
-
-      <div>
-        <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Reservation / Contact Phone *</Label>
-        <Input className="mt-1.5" placeholder="+234 801 234 5678" value={phone} onChange={(e) => setPhone(e.target.value)} />
-      </div>
-
-      <div>
-        <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">About the Restaurant</Label>
-        <Textarea className="mt-1.5" placeholder="Highlight your chef specialties, ambiance, outdoor terrace, or private dining..." rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
-      </div>
-
-      <div>
-        <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Restaurant Photos</Label>
-        <MultiImageUpload
-          onUploadSuccess={(r) => {
-            setBizImages((prev) => [...prev, r.secureUrl]);
-            setBizImagePublicIds((prev) => [...prev, r.publicId]);
-          }}
-          onRemove={(idx) => {
-            setBizImages((prev) => prev.filter((_, i) => i !== idx));
-            setBizImagePublicIds((prev) => prev.filter((_, i) => i !== idx));
-          }}
-          folder={CLOUDINARY_FOLDERS.BUSINESSES}
-          currentImages={bizImages}
-          buttonText="Add Restaurant Photo"
-          maxImages={10}
-        />
-      </div>
-    </div>
-  );
-
-  const getSubmitHandler = () => {
-    switch (listingType) {
-      case "restaurant": return handleCreateRestaurant;
-      case "business": return handleCreateBusiness;
-      case "product": return handleCreateProduct;
-      case "property": return handleCreateProperty;
-      case "event": return handleCreateEvent;
-      default: return () => {};
-    }
-  };
 
   const ListingCard = ({ item, type }: { item: ListingItem; type: string }) => (
     <div className="bg-card border border-border/50 rounded-xl overflow-hidden hover:border-primary/30 transition-all duration-300 shadow-sm hover:shadow-md group">
@@ -2389,7 +479,7 @@ const ProfileDashboard = () => {
             <Button
               variant="secondary"
               className="bg-white text-primary hover:bg-white/90 font-bold shadow-lg flex items-center gap-2"
-              onClick={() => setCreateOpen(true)}
+              onClick={() => openCreateWizard("")}
             >
               <Plus className="h-4 w-4" /> Create New
             </Button>
@@ -2423,7 +513,11 @@ const ProfileDashboard = () => {
                       </div>
                       <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{stat.label}</span>
                     </div>
-                    <p className="text-2xl font-extrabold">{stat.count}</p>
+                    {loadingListings ? (
+                      <Skeleton className="h-8 w-12" />
+                    ) : (
+                      <p className="text-2xl font-extrabold">{stat.count}</p>
+                    )}
                   </CardContent>
                 </Card>
               ))}
@@ -2451,23 +545,15 @@ const ProfileDashboard = () => {
                 <h3 className="font-bold mb-4">Quick Actions</h3>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
                   {[
-                    { icon: UtensilsCrossed, label: "Add Restaurant", type: "restaurant" },
-                    { icon: Building2, label: "Register Business", type: "business" },
-                    { icon: ShoppingBag, label: "Post Product", type: "product" },
-                    { icon: Home, label: "List Property", type: "property" },
-                    { icon: Calendar, label: "Create Event", type: "event" }
+                    { icon: Home, label: "List Property", type: "property" as const },
+                    { icon: ShoppingBag, label: "Post Product", type: "product" as const },
+                    { icon: UtensilsCrossed, label: "Add Restaurant", type: "restaurant" as const },
+                    { icon: Calendar, label: "Create Event", type: "event" as const },
+                    { icon: Building2, label: "Register Business", type: "business" as const },
                   ].map((action) => (
                     <button
                       key={action.type}
-                      onClick={() => {
-                        if (action.type === "restaurant") {
-                          navigate("/restaurant-wizard");
-                          return;
-                        }
-                        setListingType(action.type);
-                        setWizardStep(2);
-                        setCreateOpen(true);
-                      }}
+                      onClick={() => openCreateWizard(action.type)}
                       className="flex flex-col items-center gap-2 p-4 rounded-xl border border-border/50 hover:border-primary/50 hover:bg-primary/5 transition-all"
                     >
                       <action.icon className="w-6 h-6 text-primary" />
@@ -2488,7 +574,7 @@ const ProfileDashboard = () => {
                     <h3 className="text-lg font-bold">My Businesses ({myBusinesses.length})</h3>
                     <p className="text-sm text-muted-foreground mt-0.5">Click a business to manage its products & rooms</p>
                   </div>
-                  <Button size="sm" className="rounded-xl font-bold" onClick={() => setCreateOpen(true)}>
+                  <Button size="sm" className="rounded-xl font-bold" onClick={() => openCreateWizard("business")}>
                     <Plus className="w-4 h-4 mr-1" /> Register Business
                   </Button>
                 </div>
@@ -2508,7 +594,7 @@ const ProfileDashboard = () => {
                   <div className="text-center py-16 bg-card/30 rounded-2xl border border-dashed border-border">
                     <Building2 className="w-12 h-12 mx-auto text-muted-foreground/30 mb-3" />
                     <p className="text-muted-foreground mb-3">No businesses yet</p>
-                    <Button size="sm" variant="outline" onClick={() => setCreateOpen(true)}>
+                    <Button size="sm" variant="outline" onClick={() => openCreateWizard("business")}>
                       <Plus className="w-4 h-4 mr-1" /> Register Your First Business
                     </Button>
                   </div>
@@ -2578,11 +664,7 @@ const ProfileDashboard = () => {
                     <Button
                       size="sm"
                       className="rounded-xl font-bold"
-                      onClick={() => {
-                        setListingType("product");
-                        setWizardStep(2);
-                        setCreateOpen(true);
-                      }}
+                      onClick={() => openCreateWizard("product")}
                     >
                       <Plus className="w-4 h-4 mr-1" /> Post a Product
                     </Button>
@@ -2594,11 +676,7 @@ const ProfileDashboard = () => {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => {
-                          setListingType("product");
-                          setWizardStep(2);
-                          setCreateOpen(true);
-                        }}
+                        onClick={() => openCreateWizard("product")}
                       >
                         <Plus className="w-4 h-4 mr-1" /> Post Your First Product
                       </Button>
@@ -2623,11 +701,7 @@ const ProfileDashboard = () => {
                       size="sm"
                       variant="outline"
                       className="rounded-xl font-bold"
-                      onClick={() => {
-                        setListingType("property");
-                        setWizardStep(2);
-                        setCreateOpen(true);
-                      }}
+                      onClick={() => openCreateWizard("property")}
                     >
                       <Plus className="w-4 h-4 mr-1" /> List a Property
                     </Button>
@@ -2639,11 +713,7 @@ const ProfileDashboard = () => {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => {
-                          setListingType("property");
-                          setWizardStep(2);
-                          setCreateOpen(true);
-                        }}
+                        onClick={() => openCreateWizard("property")}
                       >
                         <Plus className="w-4 h-4 mr-1" /> List Your First Property
                       </Button>
@@ -2690,12 +760,7 @@ const ProfileDashboard = () => {
                       size="sm"
                       variant="outline"
                       className="rounded-xl font-bold"
-                      onClick={() => {
-                        setListingType("product");
-                        setListAsBizId(selectedBusinessId!);
-                        setWizardStep(2);
-                        setCreateOpen(true);
-                      }}
+                      onClick={() => openCreateWizard("product", selectedBusinessId!)}
                     >
                       <ShoppingBag className="w-4 h-4 mr-1" /> Add Product
                     </Button>
@@ -2703,12 +768,7 @@ const ProfileDashboard = () => {
                       size="sm"
                       variant="outline"
                       className="rounded-xl font-bold"
-                      onClick={() => {
-                        setListingType("property");
-                        setPropListAsBizId(selectedBusinessId!);
-                        setWizardStep(2);
-                        setCreateOpen(true);
-                      }}
+                      onClick={() => openCreateWizard("property", selectedBusinessId!)}
                     >
                       <Home className="w-4 h-4 mr-1" /> Add Room
                     </Button>
@@ -2739,12 +799,7 @@ const ProfileDashboard = () => {
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => {
-                              setListingType("product");
-                              setListAsBizId(selectedBusinessId!);
-                              setWizardStep(2);
-                              setCreateOpen(true);
-                            }}
+                            onClick={() => openCreateWizard("product", selectedBusinessId!)}
                           >
                             <Plus className="w-4 h-4 mr-1" /> Add First Product
                           </Button>
@@ -2768,12 +823,7 @@ const ProfileDashboard = () => {
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => {
-                              setListingType("property");
-                              setPropListAsBizId(selectedBusinessId!);
-                              setWizardStep(2);
-                              setCreateOpen(true);
-                            }}
+                            onClick={() => openCreateWizard("property", selectedBusinessId!)}
                           >
                             <Plus className="w-4 h-4 mr-1" /> Add First Room
                           </Button>
@@ -2806,7 +856,7 @@ const ProfileDashboard = () => {
                 >
                   <FileText className="w-4 h-4 mr-1" /> Report
                 </Button>
-                <Button size="sm" className="rounded-xl font-bold" onClick={() => { setListingType("event"); setWizardStep(2); setCreateOpen(true); }}>
+                <Button size="sm" className="rounded-xl font-bold" onClick={() => openCreateWizard("event")}>
                   <Plus className="w-4 h-4 mr-1" /> Create Event
                 </Button>
               </div>
@@ -2957,10 +1007,33 @@ const ProfileDashboard = () => {
               </div>
             )}
 
-            {myEvents.length === 0 && attendedEvents.length === 0 && (
+            {loadingListings ? (
+              <div className="space-y-4" aria-busy="true" aria-label="Loading events">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {[1, 2, 3, 4].map((i) => (
+                    <div key={i} className="bg-card border border-border/50 rounded-xl p-4 space-y-2">
+                      <Skeleton className="h-3 w-20" />
+                      <Skeleton className="h-7 w-14" />
+                    </div>
+                  ))}
+                </div>
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="bg-card border border-border/50 rounded-xl p-4 flex items-center justify-between gap-4">
+                    <div className="space-y-2 flex-1">
+                      <Skeleton className="h-4 w-1/2" />
+                      <Skeleton className="h-3 w-1/3" />
+                    </div>
+                    <div className="flex gap-4">
+                      <Skeleton className="h-8 w-14" />
+                      <Skeleton className="h-8 w-14" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : myEvents.length === 0 && attendedEvents.length === 0 && (
               <div className="text-center py-16 bg-card/30 rounded-2xl border border-dashed border-border">
                 <p className="text-muted-foreground mb-3">No events yet</p>
-                <Button size="sm" variant="outline" onClick={() => { setListingType("event"); setWizardStep(2); setCreateOpen(true); }}>
+                <Button size="sm" variant="outline" onClick={() => openCreateWizard("event")}>
                   <Plus className="w-4 h-4 mr-1" /> Create Your First Event
                 </Button>
               </div>
@@ -2981,130 +1054,20 @@ const ProfileDashboard = () => {
         </Tabs>
       </div>
 
-      {/* ── Create Listing Wizard Dialog ── */}
-      <Dialog open={createOpen} onOpenChange={(open) => { if (!open) resetWizard(); else setCreateOpen(true); }}>
-        <DialogContent className={`max-h-[90vh] overflow-y-auto rounded-2xl ${wizardStep === 1 ? "sm:max-w-2xl" : listingType === "event" ? "sm:max-w-6xl" : "sm:max-w-3xl"}`}>
-          {wizardStep === 1 ? (
-            <>
-              <DialogHeader>
-                <DialogTitle className="text-xl font-bold">What are you listing today?</DialogTitle>
-                <DialogDescription>Choose a listing type to get started</DialogDescription>
-              </DialogHeader>
-              <div className="grid grid-cols-1 gap-3 py-4">
-                {[
-                  { type: "restaurant" as const, icon: UtensilsCrossed, title: "List a Restaurant / Eatery", desc: "Interactive wizard with digital menus, dining features, opening hours & table bookings" },
-                  { type: "business" as const, icon: Store, title: "Register Business", desc: "Register your shop, brand, or service agency" },
-                  { type: "product" as const, icon: ShoppingBag, title: "Post a Product/Service", desc: "Sell a physical item, deal, package, or service" },
-                  { type: "property" as const, icon: Home, title: "List a Property", desc: "List a shortlet, apartment, land, or house" },
-                  { type: "event" as const, icon: Calendar, title: "Create an Event", desc: "Publish a concert, festival, or meetup" },
-                ].map((opt) => (
-                  <button
-                    key={opt.type}
-                    onClick={() => {
-                      if (opt.type === "restaurant") {
-                        setCreateOpen(false);
-                        navigate("/restaurant-wizard");
-                        return;
-                      }
-                      if (opt.type === "property") {
-                        setPropertySubType("" as any);
-                      }
-                      if (opt.type === "business") {
-                        setBizCategory("");
-                      }
-                      setListingType(opt.type);
-                      setWizardStep(2);
-                    }}
-                    className="flex items-center gap-4 p-4 rounded-xl border border-border/50 hover:border-primary/50 hover:bg-primary/5 transition-all text-left"
-                  >
-                    <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-                      <opt.icon className="w-6 h-6 text-primary" />
-                    </div>
-                    <div className="flex-1">
-                      <h4 className="font-bold text-sm text-foreground">{opt.title}</h4>
-                      <p className="text-xs text-muted-foreground mt-0.5">{opt.desc}</p>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
-                  </button>
-                ))}
-              </div>
-            </>
-          ) : (
-            <>
-              <DialogHeader>
-                <DialogTitle className="text-xl font-bold">
-                  {listingType === "business" && "Register Business"}
-                  {listingType === "product" && "Post a Product/Service"}
-                  {listingType === "property" && "List a Property"}
-                  {listingType === "event" && "Create an Event"}
-                  {listingType === "restaurant" && "List a Restaurant / Eatery"}
-                </DialogTitle>
-                <DialogDescription>
-                  {listingType === "restaurant"
-                    ? "Configure your restaurant storefront or launch the interactive menu wizard"
-                    : "All fields with * are required"}
-                </DialogDescription>
-              </DialogHeader>
-
-              {listingType === "business" && renderBusinessForm()}
-              {listingType === "product" && renderProductForm()}
-              {listingType === "property" && renderPropertyForm()}
-              {listingType === "event" && renderEventForm()}
-              {listingType === "restaurant" && renderRestaurantForm()}
-
-              <div className="flex gap-3 pt-4 border-t border-border">
-                <Button variant="outline" className="flex-1 rounded-xl" onClick={() => {
-                  if (listingType === "property" && propertySubType) {
-                    setPropertySubType("" as any);
-                  } else {
-                    // Fully reset per-listing-type state so the next open
-                    // starts fresh and the dialog size correctly collapses.
-                    setListingType("");
-                    setWizardStep(1);
-                  }
-                }}>Back</Button>
-                {listingType === "restaurant" ? (
-                  <div className="flex-1 flex gap-2">
-                    <Button
-                      variant="outline"
-                      className="flex-1 rounded-xl font-bold"
-                      onClick={getSubmitHandler()}
-                      disabled={isSubmitting}
-                    >
-                      {isSubmitting ? (
-                        <span className="flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Saving...</span>
-                      ) : (
-                        "Quick Save"
-                      )}
-                    </Button>
-                    <Button
-                      className="flex-1 rounded-xl font-bold bg-[#ea580c] hover:bg-[#c2410c] text-white flex items-center justify-center gap-1.5 shadow-sm"
-                      onClick={() => {
-                        setCreateOpen(false);
-                        navigate("/restaurant-wizard");
-                      }}
-                    >
-                      <Sparkles className="w-4 h-4" /> Full Wizard
-                    </Button>
-                  </div>
-                ) : (
-                  <Button className="flex-1 rounded-xl font-bold" onClick={getSubmitHandler()} disabled={isSubmitting || (listingType === "property" && !propertySubType)}>
-                    {isSubmitting ? (
-                      <span className="flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Saving...</span>
-                    ) : (
-                      listingType === "product" ? "Post Product to Marketplace" :
-                      listingType === "event" ? "Publish Event" :
-                      listingType === "business" ? "Register Business" :
-                      listingType === "property" ? (propertySubType ? "List Property" : "Select Property Type") :
-                      "Create Listing"
-                    )}
-                  </Button>
-                )}
-              </div>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
+      {/* ── Centralized Multi-Step Create Listing Wizard ── */}
+      <CreateListingWizard
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        defaultType={wizardDefaultType}
+        defaultBusinessId={wizardDefaultBusinessId}
+        myBusinesses={myBusinesses.map((b: any) => ({
+          id: b.id,
+          title: b.title,
+          location: b.location,
+          state: b.state,
+          city: b.city,
+        }))}
+      />
 
       {/* ── Delete Confirmation: Step 1 ── */}
       <Dialog open={deleteStep === 1} onOpenChange={(open) => { if (!open) cancelDelete(); }}>

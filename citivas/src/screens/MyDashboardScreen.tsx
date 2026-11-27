@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import {
-  View, Text, ScrollView, TouchableOpacity, StyleSheet, Image, ActivityIndicator, RefreshControl, Alert, Modal,
+  View, Text, ScrollView, TouchableOpacity, StyleSheet, Image, RefreshControl, Alert, Modal,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Plus, MapPin, Edit3, Trash2, Package, ArrowLeft } from '../lib/icons';
@@ -10,6 +10,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { collection, query, where, getDocs, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { getMockImage } from '../lib/mockImages';
+import { DashboardListSkeleton, SkeletonBox } from '../components/SkeletonLoader';
 
 interface OwnerListing {
   id: string;
@@ -18,17 +19,11 @@ interface OwnerListing {
   location: string;
   image: string;
   status: string;
-  collection: string;
+  collection: 'businesses' | 'marketplace' | 'house_listings' | 'events';
   raw: Record<string, any>;
 }
 
-type Tab = 'businesses' | 'products' | 'events';
-
-const TAB_COLLECTIONS: Record<Tab, string> = {
-  businesses: 'businesses',
-  products: 'marketplace',
-  events: 'events',
-};
+type Tab = 'businesses' | 'properties' | 'products' | 'events';
 
 export default function MyDashboardScreen() {
   const { colors } = useTheme();
@@ -39,7 +34,6 @@ export default function MyDashboardScreen() {
   const [listings, setListings] = useState<OwnerListing[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Delete confirmation state
   const [deleteTarget, setDeleteTarget] = useState<OwnerListing | null>(null);
   const [deleteStep, setDeleteStep] = useState<0 | 1 | 2>(0);
 
@@ -49,9 +43,13 @@ export default function MyDashboardScreen() {
     try {
       const results: OwnerListing[] = [];
 
-      // Businesses
-      const bizQ = query(collection(db, 'businesses'), where('ownerId', '==', user.id));
-      const bizSnap = await getDocs(bizQ);
+      const [bizSnap, propSnap, prodSnap, evSnap] = await Promise.all([
+        getDocs(query(collection(db, 'businesses'), where('ownerId', '==', user.id))),
+        getDocs(query(collection(db, 'house_listings'), where('ownerId', '==', user.id))),
+        getDocs(query(collection(db, 'marketplace'), where('ownerId', '==', user.id))),
+        getDocs(query(collection(db, 'events'), where('ownerId', '==', user.id))),
+      ]);
+
       for (const d of bizSnap.docs) {
         const data = d.data();
         results.push({
@@ -66,16 +64,27 @@ export default function MyDashboardScreen() {
         });
       }
 
-      // Products
-      const prodQ = query(collection(db, 'marketplace'), where('ownerId', '==', user.id));
-      const prodSnap = await getDocs(prodQ);
+      for (const d of propSnap.docs) {
+        const data = d.data();
+        results.push({
+          id: d.id,
+          title: data.title || data.name || 'Untitled Property',
+          category: data.type || 'Property',
+          location: data.city || data.state || data.location || '',
+          image: data.image || (Array.isArray(data.images) && data.images[0]) || '',
+          status: data.status || 'Active',
+          collection: 'house_listings',
+          raw: data,
+        });
+      }
+
       for (const d of prodSnap.docs) {
         const data = d.data();
         results.push({
           id: d.id,
           title: data.name || data.title || 'Untitled',
           category: data.category || 'Product',
-          location: '',
+          location: data.city || data.state || '',
           image: data.image || (Array.isArray(data.images) && data.images[0]) || '',
           status: data.status || 'Active',
           collection: 'marketplace',
@@ -83,9 +92,6 @@ export default function MyDashboardScreen() {
         });
       }
 
-      // Events
-      const evQ = query(collection(db, 'events'), where('ownerId', '==', user.id));
-      const evSnap = await getDocs(evQ);
       for (const d of evSnap.docs) {
         const data = d.data();
         results.push({
@@ -112,14 +118,26 @@ export default function MyDashboardScreen() {
 
   const filteredListings = listings.filter((l) => {
     if (tab === 'businesses') return l.collection === 'businesses';
+    if (tab === 'properties') return l.collection === 'house_listings';
     if (tab === 'products') return l.collection === 'marketplace';
     if (tab === 'events') return l.collection === 'events';
     return false;
   });
 
   const handleEdit = (item: OwnerListing) => {
+    let editType: 'business' | 'restaurant' | 'property' | 'product' | 'event' = 'business';
+    if (item.collection === 'house_listings') {
+      editType = 'property';
+    } else if (item.collection === 'marketplace') {
+      editType = 'product';
+    } else if (item.collection === 'events') {
+      editType = 'event';
+    } else if (item.raw.category === 'Restaurant' || item.raw.type === 'Restaurant') {
+      editType = 'restaurant';
+    }
+
     navigation.navigate('CreateListing', {
-      editType: item.collection === 'businesses' ? 'business' : item.collection === 'marketplace' ? 'product' : 'event',
+      editType,
       editData: { id: item.id, ...item.raw },
     });
   };
@@ -129,9 +147,7 @@ export default function MyDashboardScreen() {
     setDeleteStep(1);
   };
 
-  const confirmDeleteStep1 = () => {
-    setDeleteStep(2);
-  };
+  const confirmDeleteStep1 = () => setDeleteStep(2);
 
   const confirmDeleteStep2 = async () => {
     if (!deleteTarget) return;
@@ -152,13 +168,14 @@ export default function MyDashboardScreen() {
     setDeleteTarget(null);
   };
 
-  const handleCreate = () => {
-    navigation.navigate('CreateListing');
+  const handleCreate = (defaultType?: 'property' | 'product' | 'restaurant' | 'event' | 'business') => {
+    navigation.navigate('CreateListing', defaultType ? { defaultType } : undefined);
   };
 
   const bizCount = listings.filter((l) => l.collection === 'businesses').length;
-  const eventCount = listings.filter((l) => l.collection === 'events').length;
+  const propCount = listings.filter((l) => l.collection === 'house_listings').length;
   const prodCount = listings.filter((l) => l.collection === 'marketplace').length;
+  const eventCount = listings.filter((l) => l.collection === 'events').length;
 
   return (
     <View style={[s.container, { backgroundColor: colors.background }]}>
@@ -170,7 +187,7 @@ export default function MyDashboardScreen() {
         <TouchableOpacity
           style={[s.addBtn, { backgroundColor: colors.primary }]}
           activeOpacity={0.7}
-          onPress={handleCreate}
+          onPress={() => handleCreate()}
         >
           <Plus size={20} color="#fff" strokeWidth={2.5} />
         </TouchableOpacity>
@@ -184,30 +201,34 @@ export default function MyDashboardScreen() {
         {/* Stats */}
         <View style={s.statsRow}>
           <View style={[s.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[s.statValue, { color: colors.primary }]}>{bizCount}</Text>
-            <Text style={[s.statLabel, { color: colors.mutedForeground }]}>Businesses</Text>
+            {loading ? <SkeletonBox width={30} height={22} borderRadius={6} /> : <Text style={[s.statValue, { color: colors.primary }]}>{bizCount}</Text>}
+            <Text style={[s.statLabel, { color: colors.mutedForeground }]}>Places</Text>
           </View>
           <View style={[s.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[s.statValue, { color: colors.accent }]}>{prodCount}</Text>
+            {loading ? <SkeletonBox width={30} height={22} borderRadius={6} /> : <Text style={[s.statValue, { color: '#1E88E5' }]}>{propCount}</Text>}
+            <Text style={[s.statLabel, { color: colors.mutedForeground }]}>Properties</Text>
+          </View>
+          <View style={[s.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            {loading ? <SkeletonBox width={30} height={22} borderRadius={6} /> : <Text style={[s.statValue, { color: colors.accent }]}>{prodCount}</Text>}
             <Text style={[s.statLabel, { color: colors.mutedForeground }]}>Products</Text>
           </View>
           <View style={[s.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[s.statValue, { color: colors.success }]}>{eventCount}</Text>
+            {loading ? <SkeletonBox width={30} height={22} borderRadius={6} /> : <Text style={[s.statValue, { color: colors.success }]}>{eventCount}</Text>}
             <Text style={[s.statLabel, { color: colors.mutedForeground }]}>Events</Text>
           </View>
         </View>
 
         {/* Tabs */}
         <View style={[s.tabRow, { backgroundColor: colors.muted }]}>
-          {(['businesses', 'products', 'events'] as const).map((t) => (
+          {(['businesses', 'properties', 'products', 'events'] as const).map((t) => (
             <TouchableOpacity
               key={t}
               style={[s.tab, tab === t && { backgroundColor: colors.card }]}
               onPress={() => setTab(t)}
               activeOpacity={0.7}
             >
-              <Text style={[s.tabText, tab === t && { color: colors.primary }]}>
-                {t.charAt(0).toUpperCase() + t.slice(1)}
+              <Text style={[s.tabText, { color: colors.mutedForeground }, tab === t && { color: colors.primary }]} numberOfLines={1}>
+                {t === 'businesses' ? 'Places' : t.charAt(0).toUpperCase() + t.slice(1)}
               </Text>
             </TouchableOpacity>
           ))}
@@ -215,21 +236,35 @@ export default function MyDashboardScreen() {
 
         {/* Listings */}
         {loading ? (
-          <ActivityIndicator style={{ marginTop: 40 }} color={colors.primary} />
+          <DashboardListSkeleton count={4} />
         ) : filteredListings.length === 0 ? (
           <View style={[s.emptyState, { borderColor: colors.border, backgroundColor: colors.muted }]}>
             <Package size={36} color={colors.mutedForeground} strokeWidth={1.5} />
-            <Text style={[s.emptyTitle, { color: colors.foreground }]}>No {tab} yet</Text>
+            <Text style={[s.emptyTitle, { color: colors.foreground }]}>No {tab === 'businesses' ? 'restaurants or businesses' : tab} yet</Text>
             <Text style={[s.emptyDesc, { color: colors.mutedForeground }]}>
-              {tab === 'businesses' && 'Create your first business to get started'}
-              {tab === 'products' && 'Register a business first, then post products'}
-              {tab === 'events' && 'Create your first event to get started'}
+              {tab === 'businesses' && 'Add a restaurant or local business to get discovered'}
+              {tab === 'properties' && 'List a rental, shortlet, hotel, land, or commercial space'}
+              {tab === 'products' && 'Post a product or service straight to the Citivas Marketplace'}
+              {tab === 'events' && 'Create an event and start selling tickets'}
             </Text>
-            {tab === 'businesses' ? (
-              <TouchableOpacity style={[s.emptyBtn, { borderColor: colors.primary }]} onPress={handleCreate}>
-                <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 13 }}>Create Business</Text>
-              </TouchableOpacity>
-            ) : null}
+            <TouchableOpacity
+              style={[s.emptyBtn, { borderColor: colors.primary }]}
+              onPress={() =>
+                handleCreate(
+                  tab === 'properties'
+                    ? 'property'
+                    : tab === 'products'
+                    ? 'product'
+                    : tab === 'events'
+                    ? 'event'
+                    : 'restaurant'
+                )
+              }
+            >
+              <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 13 }}>
+                {tab === 'businesses' ? 'Create Listing' : `Add ${tab.slice(0, -1)}`}
+              </Text>
+            </TouchableOpacity>
           </View>
         ) : (
           <View style={s.listingsList}>
@@ -267,7 +302,7 @@ export default function MyDashboardScreen() {
         <View style={{ height: insets.bottom + 40 }} />
       </ScrollView>
 
-      {/* ── Delete Confirmation: Step 1 ── */}
+      {/* Delete Confirmation: Step 1 */}
       <Modal visible={deleteStep === 1} transparent animationType="fade" onRequestClose={cancelDelete}>
         <TouchableOpacity style={s.modalOverlay} activeOpacity={1} onPress={cancelDelete}>
           <View style={[s.modalCard, { backgroundColor: colors.card }]}>
@@ -287,7 +322,7 @@ export default function MyDashboardScreen() {
         </TouchableOpacity>
       </Modal>
 
-      {/* ── Delete Confirmation: Step 2 (final) ── */}
+      {/* Delete Confirmation: Step 2 */}
       <Modal visible={deleteStep === 2} transparent animationType="fade" onRequestClose={cancelDelete}>
         <TouchableOpacity style={s.modalOverlay} activeOpacity={1} onPress={cancelDelete}>
           <View style={[s.modalCard, { backgroundColor: colors.card }]}>
@@ -315,17 +350,17 @@ const s = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 10, borderBottomWidth: 1, gap: 12 },
   backBtn: { padding: 4 },
   headerTitle: { flex: 1, fontSize: 22, fontWeight: '800', letterSpacing: -0.3 },
-  addBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  addBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   scrollContent: { paddingHorizontal: 16, paddingTop: 16 },
 
-  statsRow: { flexDirection: 'row', gap: 12, marginBottom: 16 },
-  statCard: { flex: 1, borderRadius: 14, padding: 16, borderWidth: 1, alignItems: 'center' },
-  statValue: { fontSize: 24, fontWeight: '800' },
-  statLabel: { fontSize: 12, fontWeight: '600', marginTop: 2 },
+  statsRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
+  statCard: { flex: 1, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 8, borderWidth: 1, alignItems: 'center' },
+  statValue: { fontSize: 21, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  statLabel: { fontSize: 11, fontWeight: '600', marginTop: 2 },
 
   tabRow: { flexDirection: 'row', borderRadius: 12, padding: 4, marginBottom: 16 },
   tab: { flex: 1, paddingVertical: 9, alignItems: 'center', borderRadius: 10 },
-  tabText: { fontSize: 13, fontWeight: '600' },
+  tabText: { fontSize: 12, fontWeight: '700' },
 
   listingsList: { gap: 10 },
   listingCard: { flexDirection: 'row', alignItems: 'center', borderRadius: 14, borderWidth: 1, overflow: 'hidden' },
@@ -336,12 +371,12 @@ const s = StyleSheet.create({
   listingLocRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
   listingLoc: { fontSize: 12 },
   listingActions: { flexDirection: 'row', paddingRight: 14, gap: 12 },
-  actionIcon: { padding: 4 },
+  actionIcon: { padding: 6 },
 
   emptyState: { borderRadius: 14, borderWidth: 1, borderStyle: 'dashed', padding: 32, alignItems: 'center', gap: 8 },
   emptyTitle: { fontSize: 15, fontWeight: '700' },
-  emptyDesc: { fontSize: 13, textAlign: 'center' },
-  emptyBtn: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 16, paddingVertical: 8, marginTop: 8 },
+  emptyDesc: { fontSize: 13, textAlign: 'center', lineHeight: 19 },
+  emptyBtn: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 16, paddingVertical: 10, marginTop: 8 },
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: 24 },
   modalCard: { borderRadius: 16, padding: 24, gap: 10 },

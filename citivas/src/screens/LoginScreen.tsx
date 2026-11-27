@@ -1,17 +1,22 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator, Alert, Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Mail, Lock, Eye, EyeOff } from '../lib/icons';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import { Mail, Lock, Eye, EyeOff, ArrowLeft } from '../lib/icons';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function LoginScreen() {
   const { colors } = useTheme();
   const { loginWithEmail, signUpWithEmailPassword, resetPassword, loginWithGoogle } = useAuth();
-  const [isSignUp, setIsSignUp] = useState(false);
+  const navigation = useNavigation<any>();
+  const route = useRoute<any>();
+  const initialMode: 'signin' | 'signup' | undefined = route?.params?.initialMode;
+
+  const [isSignUp, setIsSignUp] = useState(initialMode === 'signup');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -20,6 +25,16 @@ export default function LoginScreen() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isWorking, setIsWorking] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (initialMode === 'signup') {
+      setIsSignUp(true);
+      setErrorMessage(null);
+    } else if (initialMode === 'signin') {
+      setIsSignUp(false);
+      setErrorMessage(null);
+    }
+  }, [initialMode]);
 
   const handleSubmit = async () => {
     if (!email.trim() || !password.trim()) {
@@ -84,11 +99,21 @@ export default function LoginScreen() {
     <SafeAreaView style={[s.container, { backgroundColor: colors.background }]}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          {navigation.canGoBack() ? (
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
+              style={s.backBtn}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityLabel="Back to onboarding"
+            >
+              <ArrowLeft size={22} color={colors.foreground} strokeWidth={2} />
+            </TouchableOpacity>
+          ) : null}
 
           <View style={s.header}>
             <Image source={require('../../assets/citivas-logo.png')} style={s.logo} resizeMode="contain" />
-            <Text style={s.brand}>Citivas</Text>
-            <Text style={s.subtitle}>
+            <Text style={[s.brand, { color: colors.foreground }]}>Citivas</Text>
+            <Text style={[s.subtitle, { color: colors.mutedForeground }]}>
               {isSignUp ? 'Create your account to explore Nigeria' : 'Welcome back — discover your city'}
             </Text>
           </View>
@@ -222,6 +247,18 @@ export default function LoginScreen() {
             </TouchableOpacity>
           </View>
 
+          {!navigation.canGoBack() ? (
+            <TouchableOpacity
+              onPress={() => navigation.navigate('Onboarding')}
+              style={{ alignSelf: 'center', marginTop: 14, minHeight: 40, justifyContent: 'center' }}
+              activeOpacity={0.7}
+            >
+              <Text style={[s.toggleLink, { color: colors.mutedForeground, fontSize: 13 }]}>
+                View welcome tour
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+
           <Text style={[s.footer, { color: colors.mutedForeground }]}>
             By continuing, you agree to our Terms of Service and Privacy Policy
           </Text>
@@ -254,8 +291,15 @@ function friendlyAuthError(code?: string): string {
 const s = StyleSheet.create({
   container: { flex: 1 },
   scroll: { flexGrow: 1, paddingHorizontal: 20, paddingBottom: 40 },
+  backBtn: {
+    width: 44,
+    height: 44,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+    marginTop: 6,
+  },
 
-  header: { paddingTop: 24, paddingBottom: 28, alignItems: 'center' },
+  header: { paddingTop: 16, paddingBottom: 28, alignItems: 'center' },
   logo: { width: 80, height: 80, marginBottom: 12, borderRadius: 16 },
   brand: { fontSize: 24, fontWeight: '800', letterSpacing: -0.5 },
   subtitle: { fontSize: 14, marginTop: 6, textAlign: 'center' },

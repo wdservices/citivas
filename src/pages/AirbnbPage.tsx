@@ -6,6 +6,7 @@ import { normalizeListingDoc } from "@/lib/normalizeBusiness";
 import SearchHeader from "@/components/SearchHeader";
 import ListingCard from "@/components/ListingCard";
 import MiniSiteStrip from "@/components/MiniSiteStrip";
+import { ListingGridSkeleton } from "@/components/ui/ListingSkeletons";
 import airbnbApartment from "@/assets/airbnb-apartment.jpg";
 import airbnbHouse from "@/assets/airbnb-house.jpg";
 
@@ -273,19 +274,21 @@ const AirbnbPage = () => {
       />
       
       <div className="px-4 py-6">
-        {loading && <p className="text-center py-4">Loading rentals...</p>}
-        
         <MiniSiteStrip types={["shortlet", "hotel"]} title="Serviced shortlets with their own storefront" subtitle="Self check-in, live rates and verified photos." />
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredPlaces.map((place) => (
-            <ListingCard
-              key={place.id}
-              {...place}
-              location={place.location}
-              onClick={() => handlePlaceClick(place.id)}
-            />
-          ))}
-        </div>
+        {loading ? (
+          <ListingGridSkeleton count={6} />
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredPlaces.map((place) => (
+              <ListingCard
+                key={place.id}
+                {...place}
+                location={place.location}
+                onClick={() => handlePlaceClick(place.id)}
+              />
+            ))}
+          </div>
+        )}
         
         {!loading && filteredPlaces.length === 0 && (
           <div className="text-center py-12">

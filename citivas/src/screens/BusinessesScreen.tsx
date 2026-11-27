@@ -8,6 +8,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../contexts/ThemeContext';
 import { useExploreData, ExploreListing } from '../lib/useExploreData';
 import { getMockImage } from '../lib/mockImages';
+import { TwoColumnGridSkeleton } from '../components/SkeletonLoader';
 
 const CATEGORIES = ['All', 'Restaurant', 'Hotel', 'Shopping', 'Attraction', 'Fun Places', 'Lifestyle'];
 
@@ -150,7 +151,7 @@ export default function BusinessesScreen() {
 
       {/* Business grid */}
       {loading ? (
-        <ActivityIndicator style={{ marginTop: 40 }} color={colors.primary} />
+        <TwoColumnGridSkeleton rows={3} />
       ) : (
         <FlatList
           data={filtered}

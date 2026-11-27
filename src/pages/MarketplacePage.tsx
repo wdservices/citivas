@@ -11,6 +11,7 @@ import SEO from "@/components/SEO";
 import { useMarketplaceItems, fmt } from "@/lib/useFirestore";
 import { normalizeListingDoc } from "@/lib/normalizeBusiness";
 import { getMockImage } from "@/lib/mockImages";
+import { MarketplaceSkeleton } from "@/components/ui/ListingSkeletons";
 
 function isRecentlyListed(createdAt?: any): boolean {
   if (!createdAt) return false;
@@ -257,9 +258,7 @@ const MarketplacePage = () => {
           )}
 
           {isLoading ? (
-            <div className="flex items-center justify-center py-20">
-              <Loader2 className="w-8 h-8 text-primary animate-spin" />
-            </div>
+            <MarketplaceSkeleton viewMode={viewMode} count={10} />
           ) : filteredProducts.length === 0 ? (
             <div className="text-center py-20">
               <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">

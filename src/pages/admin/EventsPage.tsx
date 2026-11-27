@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Calendar, MapPin, Ticket } from 'lucide-react'
 import { listenAllBusinesses, splitBusinessesAndEvents, groupByState, AdminBusiness } from '@/lib/adminData'
+import { AdminCardGridSkeleton } from '@/components/ui/ListingSkeletons'
 
 function formatDate(iso?: string): string {
   if (!iso) return '—'
@@ -58,7 +59,7 @@ export default function AdminEventsPage() {
 
       <div className="card">
         {loading ? (
-          <p className="text-sm text-ink/50 py-8 text-center">Loading events...</p>
+          <AdminCardGridSkeleton count={6} />
         ) : filteredEvents.length === 0 ? (
           <div className="py-12 text-center">
             <Calendar className="h-10 w-10 text-ink/20 mx-auto mb-3" />

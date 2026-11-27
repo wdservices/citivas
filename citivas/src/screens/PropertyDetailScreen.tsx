@@ -10,6 +10,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../contexts/ThemeContext';
 import { usePropertyDetail, RoomCategory } from '../lib/usePropertyDetail';
+import { DetailScreenSkeleton } from '../components/SkeletonLoader';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -60,7 +61,7 @@ export default function PropertyDetailScreen({ route }: Props) {
   if (loading) {
     return (
       <View style={[s.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
-        <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 80 }} />
+        <DetailScreenSkeleton />
       </View>
     );
   }

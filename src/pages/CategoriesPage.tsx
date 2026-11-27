@@ -8,6 +8,7 @@ import { getMockImage } from "@/lib/mockImages";
 import { useRegion } from "@/contexts/RegionContext";
 import { useBusinesses, useEvents, useMarketplaceItems, useHouseListings, fmt } from "@/lib/useFirestore";
 import { normalizeBusinessDoc, normalizeListingDoc } from "@/lib/normalizeBusiness";
+import { CategoryRowSkeleton } from "@/components/ui/ListingSkeletons";
 
 function isRecentlyListed(createdAt?: any): boolean {
   if (!createdAt) return false;
@@ -176,7 +177,7 @@ const CategoriesPage = () => {
         )}
       </div>
       {loading ? (
-        <div className="flex items-center justify-center py-16"><Loader2 className="w-7 h-7 text-primary animate-spin" /></div>
+        <CategoryRowSkeleton count={4} />
       ) : items.length === 0 ? (
         <div className="px-4 md:px-6">
           <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide -mx-4 px-4">

@@ -5,6 +5,7 @@ import { db } from "@/lib/firebase";
 import { normalizeBusinessDoc } from "@/lib/normalizeBusiness";
 import SearchHeader from "@/components/SearchHeader";
 import ListingCard from "@/components/ListingCard";
+import { ListingGridSkeleton } from "@/components/ui/ListingSkeletons";
 
 interface LifestylePlace {
   id: string;
@@ -67,7 +68,7 @@ const LifestylePage = () => {
       />
       
       <div className="px-4 py-6">
-        {loading && <p className="text-center">Loading lifestyle places...</p>}
+        {loading && <ListingGridSkeleton count={6} />}
         {error && <p className="text-center text-red-500">{error}</p>}
         {!loading && !error && (
           <>

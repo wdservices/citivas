@@ -156,12 +156,76 @@ export const EVENT_CATEGORIES = [
 ] as const;
 
 export const PRODUCT_CATEGORIES = [
-  "Electronics",
-  "Fashion",
-  "Home",
-  "Vehicles",
-  "Property",
-  "Beauty",
-  "Sports",
+  "Phones & Tablets",
+  "Electronics & Gadgets",
+  "Fashion & Apparel",
+  "Home, Kitchen & Furniture",
+  "Beauty & Personal Care",
+  "Vehicles & Automotive",
+  "Sports, Fitness & Outdoor",
+  "Food & Provisions",
+  "Services & Freelance",
+  "Baby & Kids",
+  "Health & Wellness",
   "Other",
 ] as const;
+
+export const RESTAURANT_CUISINES = [
+  "Nigerian / Local Delicacies",
+  "Afro-Fusion",
+  "Continental & Grills",
+  "Seafood & Grill",
+  "Italian & Pizza",
+  "Fast Food & Burgers",
+  "Asian, Chinese & Sushi",
+  "Bakery, Pastries & Cafe",
+  "BBQ, Suya & Shawarma",
+  "Lounge, Drinks & Cocktails",
+  "Fine Dining",
+  "Vegetarian & Healthy",
+] as const;
+
+export const RESTAURANT_TYPES = [
+  "FINE DINING",
+  "CASUAL EATERY",
+  "ROOFTOP & LOUNGE",
+  "CAFE & BAKERY",
+  "FAST CASUAL / QSR",
+  "BUKA & LOCAL KITCHEN",
+  "GRILL & BBQ BAR",
+] as const;
+
+export const RESTAURANT_PRICE_TIERS = [
+  { label: "₦ Budget (Under ₦3,000)", value: "₦" },
+  { label: "₦₦ Casual (₦3,000 - ₦10,000)", value: "₦₦" },
+  { label: "₦₦₦ Upscale (₦10,000 - ₦30,000)", value: "₦₦₦" },
+  { label: "₦₦₦₦ Fine Dining (₦30,000+)", value: "₦₦₦₦" },
+] as const;
+
+export const RESTAURANT_AMENITIES = [
+  { id: "dine_in", label: "Dine-in Service" },
+  { id: "takeaway", label: "Takeaway / Pickup" },
+  { id: "delivery", label: "Food Delivery" },
+  { id: "outdoor_seating", label: "Outdoor Seating" },
+  { id: "rooftop", label: "Rooftop Lounge" },
+  { id: "private_dining", label: "Private Dining" },
+  { id: "bar_cocktails", label: "Bar & Cocktails" },
+  { id: "live_music", label: "Live Music / DJ" },
+  { id: "wifi", label: "High-Speed WiFi" },
+  { id: "parking", label: "Parking Available" },
+  { id: "reservations", label: "Table Reservations" },
+  { id: "pos_cards", label: "POS & Cards" },
+] as const;
+
+export const MENU_CATEGORIES = [
+  "Starters & Appetizers",
+  "Main Dishes",
+  "Soups & Swallows",
+  "Grills, BBQ & Suya",
+  "Sides & Extras",
+  "Pastries & Desserts",
+  "Cocktails & Mocktails",
+  "Wine, Beer & Spirits",
+  "Fresh Juices & Smoothies",
+] as const;
+

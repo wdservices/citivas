@@ -10,6 +10,7 @@ import { useMainNavigation } from '../contexts/MainNavigationContext';
 import { FilterPills } from '../components/FilterPills';
 import { useExploreData } from '../lib/useExploreData';
 import { getMockImage } from '../lib/mockImages';
+import { EventsListSkeleton } from '../components/SkeletonLoader';
 
 const FILTERS = ['All', 'Music', 'Food', 'Art', 'Business', 'Sports'];
 
@@ -43,7 +44,7 @@ export default function EventsScreen() {
       <FilterPills options={FILTERS} active={activeFilter} onChange={setActiveFilter} />
 
       {loading ? (
-        <ActivityIndicator style={{ marginTop: 40 }} color={colors.primary} />
+        <EventsListSkeleton count={3} />
       ) : (
         <FlatList
           data={filtered}

@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import * as Location from 'expo-location';
-import { Compass, Building2, Calendar, ShoppingBag, LayoutDashboard, Bookmark, Wallet, MessageCircle, Share2, MessageSquare, Settings, Headphones } from '../lib/icons';
+import { Compass, Building2, Calendar, ShoppingBag, LayoutDashboard, Bookmark, Wallet, MessageCircle, Share2, MessageSquare, Settings, Headphones, BarChart2 } from '../lib/icons';
 import { Share, Linking, Platform } from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -51,7 +51,7 @@ export default function MainTabsContent({
   SettingsScreen,
 }: MainTabsContentProps) {
   const { colors } = useTheme();
-  const { user, logout } = useAuth();
+  const { user, logout, isAdmin } = useAuth();
   const navigation = useNavigation<any>();
   const [activeTab, setActiveTab] = useState('explore');
   const [menuVisible, setMenuVisible] = useState(false);
@@ -116,8 +116,25 @@ export default function MainTabsContent({
           }},
         ],
       },
+      ...(isAdmin
+        ? [
+            {
+              title: 'Admin',
+              items: [
+                {
+                  label: 'Platform Health & Analytics',
+                  icon: BarChart2,
+                  onPress: () => {
+                    setMenuVisible(false);
+                    navigation.navigate('AdminAnalytics');
+                  },
+                },
+              ],
+            },
+          ]
+        : []),
     ],
-    [navigation]
+    [navigation, isAdmin]
   );
 
   const navigateToTab = (tab: MainTabId) => {

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { db } from '@/lib/firebase'
 import { collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore'
 import { Search, Download, Clock, User, FileText, Filter } from 'lucide-react'
+import { AdminTableRowsSkeleton } from '@/components/ui/ListingSkeletons'
 
 interface ActivityLog {
   id: string
@@ -224,9 +225,8 @@ export default function AdminActivityLogsPage() {
       </form>
 
       {loading && (
-        <div className="text-center py-12">
-          <div className="animate-spin w-8 h-8 border-2 border-marigold border-t-transparent rounded-full mx-auto" />
-          <p className="text-sm text-ink/50 mt-3">Loading activity logs...</p>
+        <div className="bg-white rounded-xl border border-sand-200 overflow-hidden">
+          <AdminTableRowsSkeleton rows={6} asTable={false} />
         </div>
       )}
 

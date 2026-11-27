@@ -10,6 +10,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import EventsSection from '@/components/EventsSection';
 import MiniSiteCard from '@/components/MiniSiteCard';
 import { useMiniSites } from '@/hooks/useMiniSites';
+import { MiniSiteGridSkeleton } from '@/components/ui/ListingSkeletons';
 import heroCity from '@/assets/hero-cityscape.jpg';
 import heroNightlife from '@/assets/hero-nightlife.jpg';
 import heroRestaurant from '@/assets/hero-restaurant.jpg';
@@ -36,7 +37,7 @@ const LandingPage = () => {
   const { brandName } = useRegion();
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [searchQuery, setSearchQuery] = useState('');
-  const { sites: miniSites } = useMiniSites();
+  const { sites: miniSites, loading: miniSitesLoading } = useMiniSites();
   const staySites = miniSites.filter((s) => s.type !== 'restaurant').slice(0, 6);
 
   // Lightweight live stats and social feed for fun interactions
@@ -543,14 +544,16 @@ const LandingPage = () => {
             </Link>
           </div>
 
-          {staySites.length > 0 ? (
+          {miniSitesLoading ? (
+            <MiniSiteGridSkeleton count={3} />
+          ) : staySites.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
               {staySites.map((site) => (
                 <MiniSiteCard key={site.slug} site={site} />
               ))}
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">Loading stays…</p>
+            <p className="text-sm text-muted-foreground">No stays available right now.</p>
           )}
 
           <div className="mt-6 sm:hidden">

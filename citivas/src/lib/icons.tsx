@@ -108,6 +108,9 @@ export const ShieldCheck: IconComp = makeFeather('shield-check');
 export const Check: IconComp = makeFeather('check');
 export const Truck: IconComp = makeFeather('truck');
 export const RefreshCcw: IconComp = makeFeather('refresh-ccw');
+export const TrendingUp: IconComp = makeFeather('trending-up');
+export const BarChart2: IconComp = makeFeather('bar-chart-2');
+export const Layers: IconComp = makeFeather('layers');
 export const Edit3 = CreditCard;
 
 export default {
@@ -120,4 +123,5 @@ export default {
   Send, Mail, Lock, Eye, EyeOff, Sun, Moon, LogOut, Shield,
   HelpCircle, CreditCard, Bell, ArrowDown, ArrowUp, Minus, Package, Edit3,
   Phone, Clock, Sparkles, Share, ShieldCheck, Check, Truck, RefreshCcw,
+  TrendingUp, BarChart2, Layers,
 };

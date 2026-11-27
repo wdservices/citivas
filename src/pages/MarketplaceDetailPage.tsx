@@ -19,6 +19,7 @@ import SEO from "@/components/SEO";
 import { AddressPicker } from "@/components/AddressPicker";
 import { getMockImage } from "@/lib/mockImages";
 import { ChatWidget } from "@/components/ChatWidget";
+import { MarketplaceDetailSkeleton } from "@/components/ui/ListingSkeletons";
 
 type ProductData = {
   id: string;
@@ -234,11 +235,7 @@ const MarketplaceDetailPage = () => {
     : null;
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <Loader2 className="w-8 h-8 text-primary animate-spin" />
-      </div>
-    );
+    return <MarketplaceDetailSkeleton />;
   }
 
   if (!product) {

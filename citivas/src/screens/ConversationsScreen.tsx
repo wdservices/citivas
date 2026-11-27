@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import {
-  View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator,
+  View, Text, FlatList, TouchableOpacity, StyleSheet,
 } from 'react-native';
+import { ConversationsListSkeleton } from '../components/SkeletonLoader';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MessageCircle, ArrowLeft } from '../lib/icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -78,7 +79,7 @@ export default function ConversationsScreen() {
       </View>
 
       {loading ? (
-        <ActivityIndicator style={{ marginTop: 40 }} color={colors.primary} />
+        <ConversationsListSkeleton count={5} />
       ) : conversations.length === 0 ? (
         <View style={s.emptyState}>
           <MessageCircle size={40} color={colors.mutedForeground} strokeWidth={1.5} />

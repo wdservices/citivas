@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ArrowDownToLine, ArrowUpFromLine, Wallet as WalletIcon } from 'lucide-react'
 import { listenAllWalletTransactions, computeWalletStats, listenAllTickets, computeTicketRevenue, WalletTransaction, TicketRecord } from '@/lib/adminData'
+import { Skeleton } from '@/components/ui/skeleton'
+import { AdminTableRowsSkeleton } from '@/components/ui/ListingSkeletons'
 
 function formatDate(ts: any): string {
   if (!ts?.toDate) return '—'
@@ -52,7 +54,11 @@ export default function AdminWalletPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wider text-ink/60">{stat.title}</p>
-                  <p className="font-display text-2xl font-extrabold text-ink mt-2">{stat.value}</p>
+                  {loading ? (
+                    <Skeleton className="h-8 w-24 mt-2" />
+                  ) : (
+                    <p className="font-display text-2xl font-extrabold text-ink mt-2">{stat.value}</p>
+                  )}
                 </div>
                 <div className={`${stat.color} p-3 rounded-2xl`}>
                   <Icon className="h-6 w-6" />
@@ -66,7 +72,7 @@ export default function AdminWalletPage() {
       <div className="card">
         <h3 className="font-display text-lg font-bold text-ink mb-4">Recent Transactions (all users)</h3>
         {loading ? (
-          <p className="text-sm text-ink/50 py-8 text-center">Loading transactions...</p>
+          <AdminTableRowsSkeleton cols={5} rows={6} asTable={false} />
         ) : transactions.length === 0 ? (
           <p className="text-sm text-ink/50 py-8 text-center">No wallet activity recorded yet.</p>
         ) : (

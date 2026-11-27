@@ -3,6 +3,7 @@ import { Search, Mail, Users as UsersIcon, Trash2, AlertTriangle, X, Check, Load
 import { listenUsers, AdminUser } from '@/lib/adminData'
 import { getFunctions, httpsCallable } from 'firebase/functions'
 import firebaseApp from '@/lib/firebase'
+import { AdminTableRowsSkeleton } from '@/components/ui/ListingSkeletons'
 
 function formatDate(ts: any): string {
   if (!ts?.toDate) return '—'
@@ -136,7 +137,7 @@ export default function AdminUsersPage() {
         </div>
 
         {loading ? (
-          <p className="text-sm text-ink/50 py-8 text-center">Loading users...</p>
+          <AdminTableRowsSkeleton cols={6} rows={6} asTable={false} />
         ) : filteredUsers.length === 0 ? (
           <div className="py-12 text-center">
             <UsersIcon className="h-10 w-10 text-ink/20 mx-auto mb-3" />

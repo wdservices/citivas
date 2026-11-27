@@ -11,6 +11,7 @@ import { FilterPills } from '../components/FilterPills';
 import { useExploreData } from '../lib/useExploreData';
 import { getMockImage } from '../lib/mockImages';
 import { formatPrice, parsePrice, discountPercent, isRecentlyListed } from '../lib/formatPrice';
+import { TwoColumnGridSkeleton } from '../components/SkeletonLoader';
 
 const CATEGORIES = ['All', 'Electronics', 'Fashion', 'Home', 'Vehicles'];
 
@@ -62,7 +63,7 @@ export default function MarketplaceScreen() {
       <FilterPills options={CATEGORIES} active={activeCategory} onChange={setActiveCategory} />
 
       {loading ? (
-        <ActivityIndicator style={{ marginTop: 40 }} color={colors.primary} />
+        <TwoColumnGridSkeleton rows={3} />
       ) : (
         <FlatList
           data={items}

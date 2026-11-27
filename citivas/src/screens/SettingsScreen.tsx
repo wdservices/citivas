@@ -3,7 +3,7 @@ import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView, Image, ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Sun, Moon, ChevronRight, LogOut, ArrowLeft, User, Shield, HelpCircle, CreditCard, Bell, Building2, ShoppingBag, Home, Wallet } from '../lib/icons';
+import { Sun, Moon, ChevronRight, LogOut, ArrowLeft, Shield, HelpCircle, CreditCard, Bell, Building2, ShoppingBag, Home, Wallet, BarChart2 } from '../lib/icons';
 import { useTheme } from '../contexts/ThemeContext';
 import { useMainNavigation } from '../contexts/MainNavigationContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -13,7 +13,7 @@ import { db } from '../lib/firebase';
 
 export default function SettingsScreen() {
   const { colors, themeMode, setThemeMode } = useTheme();
-  const { user, logout } = useAuth();
+  const { user, logout, isAdmin } = useAuth();
   const insets = useSafeAreaInsets();
   const { setActiveTab } = useMainNavigation();
   const navigation = useNavigation<any>();
@@ -164,6 +164,30 @@ export default function SettingsScreen() {
             </TouchableOpacity>
           ))}
         </View>
+
+        {isAdmin ? (
+          <>
+            <Text style={[s.sectionTitle, { color: colors.mutedForeground }]}>Administration</Text>
+            <View style={[s.accountCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <TouchableOpacity
+                style={s.accountRow}
+                activeOpacity={0.6}
+                onPress={() => navigation.navigate('AdminAnalytics')}
+              >
+                <View style={s.accountLeft}>
+                  <BarChart2 size={18} color={colors.primary} strokeWidth={2} />
+                  <View>
+                    <Text style={[s.accountLabel, { color: colors.foreground }]}>Platform Health & Analytics</Text>
+                    <Text style={[s.accountDesc, { color: colors.mutedForeground }]}>
+                      Daily user growth & listing submission trends
+                    </Text>
+                  </View>
+                </View>
+                <ChevronRight size={18} color={colors.mutedForeground} strokeWidth={2} />
+              </TouchableOpacity>
+            </View>
+          </>
+        ) : null}
 
         {/* Logout */}
         <TouchableOpacity

@@ -3,6 +3,7 @@ import { collection, getDocs, setDoc, deleteDoc, doc, serverTimestamp } from 'fi
 import { db } from '@/lib/firebase'
 import { Trash2, RotateCcw, UtensilsCrossed, BedDouble, Building, Search } from 'lucide-react'
 import { MINI_SITES } from '@/data/admin/miniSites'
+import { AdminTableRowsSkeleton } from '@/components/ui/ListingSkeletons'
 
 export default function AdminMiniSitesPage() {
   const [removed, setRemoved] = useState<Set<string>>(new Set())
@@ -81,7 +82,7 @@ export default function AdminMiniSitesPage() {
           </thead>
           <tbody className="divide-y divide-sand-200">
             {loading ? (
-              <tr><td colSpan={6} className="px-5 py-10 text-center text-sand-500">Loading...</td></tr>
+              <AdminTableRowsSkeleton cols={6} rows={6} asTable />
             ) : rows.map((s) => {
               const Icon = iconFor(s.type)
               const isRemoved = removed.has(s.slug)

@@ -3,6 +3,7 @@ import { Home, MapPin, Star, Search, Plus, Trash2, X, Building2 } from 'lucide-r
 import { listenHouseListings, createHouseListing, deleteHouseListing } from '@/lib/adminData'
 import { MOCK_PROPERTY_LISTINGS, type PropertyListing } from '@/data/admin/propertyListings'
 import { useAuth } from '@/contexts/AuthContext'
+import { AdminCardGridSkeleton } from '@/components/ui/ListingSkeletons'
 
 const DELETED_MOCKS_KEY = 'citivas.admin.deletedPropertyMocks'
 
@@ -147,7 +148,7 @@ export default function AdminPropertiesPage() {
       </div>
 
       {loading ? (
-        <p className="text-sm text-ink/50 py-8 text-center">Loading properties...</p>
+        <AdminCardGridSkeleton count={6} />
       ) : filtered.length === 0 ? (
         <div className="card py-12 text-center">
           <Home className="h-10 w-10 text-ink/20 mx-auto mb-3" />

@@ -16,6 +16,8 @@ import {
   Send, CalendarDays, AlertCircle, TrendingDown, RotateCcw, Edit3, Trash2, Save, Lock, UtensilsCrossed,
 } from "lucide-react";
 import AdminFoodMenu from "./admin/FoodMenu";
+import { Skeleton } from "@/components/ui/skeleton";
+import { AdminDashboardSkeleton } from "@/components/ui/ListingSkeletons";
 
 const NAV_ITEMS = [
   { icon: LayoutDashboard, label: "Overview" },
@@ -75,7 +77,7 @@ const DAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
 export default function HospitalityDashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { data: allHouseListings = [] } = useHouseListings();
+  const { data: allHouseListings = [], isLoading: loadingListings } = useHouseListings();
   const updateProperty = useUpdateDoc("house_listings");
   const qc = useQueryClient();
 
@@ -112,7 +114,7 @@ export default function HospitalityDashboard() {
   const [bookingSuccess, setBookingSuccess] = useState(false);
 
   // Real bookings from Firestore
-  const { data: realBookings = [] } = usePropertyBookings(user?.id || null);
+  const { data: realBookings = [], isLoading: loadingBookings } = usePropertyBookings(user?.id || null);
 
   const [activeNav, setActiveNav] = useState("Overview");
   const [resTab, setResTab] = useState<"Upcoming" | "Current" | "Checked-out">("Upcoming");
@@ -968,6 +970,16 @@ const handleCopy = () => {
     return null;
   }
 
+  if (loadingListings) {
+    return (
+      <div className="min-h-screen bg-background p-6 md:p-10">
+        <div className="max-w-6xl mx-auto">
+          <AdminDashboardSkeleton />
+        </div>
+      </div>
+    );
+  }
+
   if (!publishedMiniSite) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
@@ -1125,7 +1137,25 @@ const handleCopy = () => {
                           </tr>
                         </thead>
                         <tbody className="text-sm">
-                          {realBookings.length === 0 ? (
+                          {loadingBookings ? (
+                            Array.from({ length: 4 }).map((_, i) => (
+                              <tr key={i} className="border-b border-border">
+                                <td className="p-4">
+                                  <div className="flex items-center gap-3">
+                                    <Skeleton className="w-8 h-8 rounded-full" />
+                                    <div className="space-y-1.5">
+                                      <Skeleton className="h-3.5 w-28" />
+                                      <Skeleton className="h-3 w-16" />
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="p-4"><Skeleton className="h-3.5 w-32" /></td>
+                                <td className="p-4"><Skeleton className="h-3.5 w-24" /></td>
+                                <td className="p-4"><Skeleton className="h-5 w-20 rounded-full" /></td>
+                                <td className="p-4 text-right"><Skeleton className="h-4 w-16 ml-auto" /></td>
+                              </tr>
+                            ))
+                          ) : realBookings.length === 0 ? (
                             <tr>
                               <td colSpan={5} className="p-8 text-center text-muted-foreground text-sm">
                                 No bookings yet. They will appear here when guests book through your mini-site.
